@@ -73,6 +73,10 @@ def hough_horizontal_angles(img, n=3):
 
   angle_precision=np.pi/180/4
   lines = cv2.HoughLines(edges, 1, angle_precision, 3)
+
+  if lines is None:
+    return []
+
   thetas=np.array(lines[0])[:,1]
 
   #filter in first(assumed to be good horizontal) and nearest
@@ -86,13 +90,17 @@ def hough_vertical_angles(img, n=5):
 
   angle_precision=np.pi/180/4
   lines = cv2.HoughLines(edges, 1, angle_precision, 3)
-  thetas2=np.array(lines[0])[:,1]
+
+  if lines is None:
+    return []
+
+  thetas=np.array(lines[0])[:,1]
 
   #filter in nearest to vertical
-  thetas2=thetas2[np.abs(thetas2 - np.pi/2) > np.pi/3]
-  thetas2=thetas2-np.pi*(thetas2 > np.pi/2)
+  thetas=thetas[np.abs(thetas - np.pi/2) > np.pi/3]
+  thetas=thetas-np.pi*(thetas > np.pi/2)
 
-  return list(thetas2[0:n])
+  return list(thetas[0:n])
 
 def thresholded(gray):
   window=21 #magic number
@@ -104,7 +112,7 @@ def thresholded(gray):
   #adaptive gaussian
   th3 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, window, 2)
   #Otsu's
-  ret4,th4 = cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+  _,th4 = cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
   #Otsu's after Gaussian filtering
   blur = cv2.GaussianBlur(gray,(3,3),0)
   _,th5 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
@@ -112,16 +120,19 @@ def thresholded(gray):
   return [th1, th2, th3, th4 ,th5]
 
 def horizontal_angle_from_edges(gray):
-  thetas=[hough_horizontal_angles(i) for i in [gray]+thresholded(gray)[1:3]]
-
-  #detect horizontal in different splits to compensate for car decor
+  #detect horizontal in different splits to compensate for car decorations
   #use different binarization for stability
-  thetas1=[hough_horizontal_angles(i[int(i.shape[0]*0.5):int(i.shape[0]*1),int(i.shape[1]*0.5):int(i.shape[1]*1)]) for i in [gray]+thresholded(gray)[1:3]]
-  thetas2=[hough_horizontal_angles(i[int(i.shape[0]*0.5):int(i.shape[0]*1),int(i.shape[1]*0):int(i.shape[1]*0.5)]) for i in [gray]+thresholded(gray)[1:3]]
-  thetas3=[hough_horizontal_angles(i[int(i.shape[0]*0):int(i.shape[0]*0.5),int(i.shape[1]*0.5):int(i.shape[1]*1)]) for i in [gray]+thresholded(gray)[1:3]]
-  thetas4=[hough_horizontal_angles(i[int(i.shape[0]*0):int(i.shape[0]*0.5),int(i.shape[1]*0):int(i.shape[1]*0.5)]) for i in [gray]+thresholded(gray)[1:3]]
+  #FIXME should use this data to detect bend plates
+  bands=[(0.5, 1, 0.5, 1), (0.5, 1, 0, 0.5), (0, 0.5, 0.5, 1), (0, 0.5, 0, 0.5), (0, 1, 0.25, 0.75)]
+  thetas_b=[]
+  for b in bands:
+    thetas_b+=[hough_horizontal_angles(i[int(i.shape[0]*b[0]):int(i.shape[0]*b[1]),int(i.shape[1]*b[2]):int(i.shape[1]*b[3])]) for i in [gray]+thresholded(gray)[1:3]]
 
-  thetas=np.array(thetas1+thetas2+thetas3+thetas4).flatten()
+  thetas=[]
+  for l in thetas_b:
+    thetas+=l
+  thetas=np.array(thetas).flatten()
+
   theta_avg=np.median(thetas) #check median vs mean
   theta_std=np.std(thetas)
 
@@ -132,7 +143,17 @@ def horizontal_angle_from_edges(gray):
   return theta
 
 def vertical_angles_from_edges(gray):
-  thetas=[hough_vertical_angles(i) for i in [gray]+thresholded(gray)[1:3]]
+  #detect vertical lines from left and right part
+  #band 1,2 catch plate horizontal border, semi vertical lines in letters _and_ car decorations
+  #band 3 catches semi vertical lines in letters
+  bands=[(0, 1, 0.5, 1), (0, 1, 0, 0.5), (0, 1, 0.25, 0.75)]
+  thetas_b=[]
+  for b in bands:
+    thetas_b+=[hough_vertical_angles(i[int(i.shape[0]*b[0]):int(i.shape[0]*b[1]),int(i.shape[1]*b[2]):int(i.shape[1]*b[3])]) for i in [gray]+thresholded(gray)[1:3]]
+
+  thetas=[]
+  for l in thetas_b:
+    thetas+=l
   thetas=np.array(thetas).flatten()
 
   #probably should whiten thetas
@@ -148,11 +169,12 @@ def vertical_angles_from_edges(gray):
     changed=False
     for i in xrange(0, len(data)-1):
       # merge if less than 5 degree away
-      if abs(np.median(data[i])-np.median(data[i+1]))<0.1:
+      if abs(np.median(data[i])-np.median(data[i+1]))<0.087:
         data[i]+=data[i+1]
         data.pop(i+1)
         changed=True
         break
+
   return data
 
 def vertical_angles_from_contours(img):
@@ -164,10 +186,32 @@ def vertical_angles_from_contours(img):
     cv2.drawContours(mask, [cnt], 0, 255, -1)
 
     #upscale to get better precision
-    theta=hough_vertical_angles(cv2.resize(mask,(0,0), fx=2.0, fy=2.0), 2)
-    thetas+=theta
+    mask=cv2.resize(mask,(0,0), fx=2.0, fy=2.0)
+    thetas+=hough_vertical_angles(mask[:,int(mask.shape[1]*0.5):int(mask.shape[1]*1)], 5)
+    thetas+=hough_vertical_angles(mask[:,int(mask.shape[1]*0):int(mask.shape[1]*0.5)], 5)
 
-  return thetas
+  thetas=np.array(thetas).flatten()
+
+  #probably should whiten thetas
+  #3 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
+  centroids,_ = kmeans(thetas, 3)
+  idx,_ = vq(thetas,centroids)
+
+  data=[list(thetas[idx==i]) for i in xrange(3)]
+  data=sorted([d for d in data if d]) #sort before merge
+
+  changed=True
+  while changed:
+    changed=False
+    for i in xrange(0, len(data)-1):
+      # merge if less than 5 degree away
+      if abs(np.median(data[i])-np.median(data[i+1]))<0.087:
+        data[i]+=data[i+1]
+        data.pop(i+1)
+        changed=True
+        break
+
+  return data
 
 def vertical_angles(img):
   ths=thresholded(img)
@@ -175,16 +219,21 @@ def vertical_angles(img):
   thetas2=vertical_angles_from_edges(img)
   thetas1=vertical_angles_from_contours(ths[-1])
 
-  thetas1_=np.median(thetas1)
+  thetas1_=[np.median(c) for c in thetas1]
   thetas2_=[np.median(c) for c in thetas2]
 
-  thetas2_=sorted(thetas2_, reverse=False, key=lambda x: abs(x-thetas1_))
+  #get consistent angles
+  th=[]
+  for theta2 in thetas2_:
+    if np.min(np.abs(theta2-thetas1_))<0.1:
+      th+=[theta2]
 
-  if abs(thetas2_[0]-thetas1_)<0.05:
-    #FIXME less than 3 degree away
-    return [thetas2_[0]]
+  if len(th)==1:
+    return [th[0]]
+  elif len(th)>1:
+    return sorted(th, reverse=False, key=lambda x: np.abs(x)) #FIXME should replace with sensible bias
   else:
-    return thetas2_
+    return sorted(thetas2_, reverse=False, key=lambda x: np.abs(x))
 
 def big_enough_contours(img):
   big_size=img.shape[0]*img.shape[1]/20 #magic number
