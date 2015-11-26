@@ -42,6 +42,10 @@ class Engine:
       svmvec = [float(x) for x in re.sub( '\s+', ' ', svs.text ).strip().split(' ')]+[-rho]
       self.hog_descriptor[letter].setSVMDetector(np.array(svmvec))
 
+    svm_file=os.path.join(datadir,'svm_plate.xml')
+    self.plate_svm=cv2.SVM()
+    self.plate_svm.load(svm_file)
+
   def detect(self):
     debug_var={"images": [self.img], "titles": ['orig'], "suffixes": ['']}
 
@@ -60,8 +64,10 @@ class Engine:
       result=task.execute()
       if isinstance(result, TaskResultZoneTransform):
         transformed=result.img
-        queue+=[TaskHaarLocalization(result.img, self.haar_cascade, 0.1, debug)]
+        queue+=[TaskHaarLocalization(result.img, self.haar_cascade, self.plate_svm, 0.1, debug)]
       elif isinstance(result, list) and len(result)>0 and isinstance(result[0], TaskResultHaarLocalization):
+        for n in xrange(len(result[:1])):
+          debug(result[n].img, 'haar_'+str(n))
         queue+=[TaskDetectAffine(r.img, r.box, debug) for r in result]
       elif isinstance(result, TaskResultDetectAffine):
         #FIXME this is wrong place to do this
@@ -97,8 +103,9 @@ class Engine:
     return plates
 
     from matplotlib import pyplot as plt
+    size=8
     for i in xrange(len(debug_var["images"])):
-      plt.subplot(int(len(debug_var["images"])/6.0+1),6,i+1),plt.imshow(debug_var["images"][i],'gray')
+      plt.subplot(int(len(debug_var["images"])/(size+0.0)+1),size,i+1),plt.imshow(debug_var["images"][i],'gray')
       plt.title(debug_var["titles"][i])
       plt.xticks([]),plt.yticks([])
     plt.show()

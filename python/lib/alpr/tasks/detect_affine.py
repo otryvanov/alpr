@@ -68,8 +68,11 @@ def draw_line(img, center, theta, color=(0,0,255)):
   cv2.line(img, (x1,y1), (x2,y2), color, 2)
 
 @memoize
-def hough_horizontal_angles(img, n=3):
-  edges = cv2.Canny(img, 50, 150, apertureSize = 3)
+def hough_horizontal_angles(img, band=None, n=3):
+  edges = cv2.Canny(img, 50, 150, apertureSize = 3, L2gradient=True)
+
+  if band is not None:
+    edges=edges[int(edges.shape[0]*band[0]):int(edges.shape[0]*band[1]),int(edges.shape[1]*band[2]):int(edges.shape[1]*band[3])]
 
   angle_precision=np.pi/180/4
   lines = cv2.HoughLines(edges, 1, angle_precision, 3)
@@ -85,8 +88,11 @@ def hough_horizontal_angles(img, n=3):
   return list(thetas[0:n])
 
 @memoize
-def hough_vertical_angles(img, n=5):
-  edges = cv2.Canny(img, 50, 150, apertureSize = 3)
+def hough_vertical_angles(img, band=None, n=5):
+  edges = cv2.Canny(img, 50, 150, apertureSize = 3, L2gradient=True)
+
+  if band is not None:
+    edges=edges[int(edges.shape[0]*band[0]):int(edges.shape[0]*band[1]),int(edges.shape[1]*band[2]):int(edges.shape[1]*band[3])]
 
   angle_precision=np.pi/180/4
   lines = cv2.HoughLines(edges, 1, angle_precision, 3)
@@ -123,14 +129,14 @@ def horizontal_angle_from_edges(gray):
   #detect horizontal in different splits to compensate for car decorations
   #use different binarization for stability
   #FIXME should use this data to detect bend plates
-  bands=[(0.5, 1, 0.5, 1), (0.5, 1, 0, 0.5), (0, 0.5, 0.5, 1), (0, 0.5, 0, 0.5), (0, 1, 0.25, 0.75)]
+
+  bands=[(0.5, 1, 0.5, 1), (0.5, 1, 0, 0.5), (0, 0.5, 0.5, 1), (0, 0.5, 0, 0.5), (0, 0.5, 0.25, 0.75), (0.5, 1, 0.25, 0.75)]
   thetas_b=[]
   for b in bands:
-    thetas_b+=[hough_horizontal_angles(i[int(i.shape[0]*b[0]):int(i.shape[0]*b[1]),int(i.shape[1]*b[2]):int(i.shape[1]*b[3])]) for i in [gray]+thresholded(gray)[1:3]]
+    thetas_b+=[hough_horizontal_angles(i, band=b) for i in [gray]+thresholded(gray)[1:3]]
 
   thetas=[]
-  for l in thetas_b:
-    thetas+=l
+  map(thetas.extend, thetas_b)
   thetas=np.array(thetas).flatten()
 
   theta_avg=np.median(thetas) #check median vs mean
@@ -149,27 +155,27 @@ def vertical_angles_from_edges(gray):
   bands=[(0, 1, 0.5, 1), (0, 1, 0, 0.5), (0, 1, 0.25, 0.75)]
   thetas_b=[]
   for b in bands:
-    thetas_b+=[hough_vertical_angles(i[int(i.shape[0]*b[0]):int(i.shape[0]*b[1]),int(i.shape[1]*b[2]):int(i.shape[1]*b[3])]) for i in [gray]+thresholded(gray)[1:3]]
+    thetas_b+=[hough_vertical_angles(i, band=b) for i in [gray]+thresholded(gray)[1:3]]
 
   thetas=[]
-  for l in thetas_b:
-    thetas+=l
+  map(thetas.extend, thetas_b)
   thetas=np.array(thetas).flatten()
 
   #probably should whiten thetas
-  #3 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
-  centroids,_ = kmeans(thetas, 3)
+  #4 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
+  n_cl=4
+  centroids,_ = kmeans(thetas, n_cl)
   idx,_ = vq(thetas,centroids)
 
-  data=[list(thetas[idx==i]) for i in xrange(3)]
+  data=[list(thetas[idx==i]) for i in xrange(n_cl)]
   data=sorted([d for d in data if d]) #sort before merge
 
   changed=True
   while changed:
     changed=False
     for i in xrange(0, len(data)-1):
-      # merge if less than 5 degree away
-      if abs(np.median(data[i])-np.median(data[i+1]))<0.087:
+      #merge if less than 5 degree away
+      if abs(np.median(data[i])-np.median(data[i+1]))<0.17453/2:
         data[i]+=data[i+1]
         data.pop(i+1)
         changed=True
@@ -181,31 +187,36 @@ def vertical_angles_from_contours(img):
   contours=big_enough_contours(img)
 
   thetas=[]
+  thetas_b=[]
+  bands=[(0, 1, 0.5, 1), (0, 1, 0, 0.5)]
   for cnt in contours:
     mask = np.zeros(img.shape, np.uint8)
     cv2.drawContours(mask, [cnt], 0, 255, -1)
 
     #upscale to get better precision
-    mask=cv2.resize(mask,(0,0), fx=2.0, fy=2.0)
-    thetas+=hough_vertical_angles(mask[:,int(mask.shape[1]*0.5):int(mask.shape[1]*1)], 5)
-    thetas+=hough_vertical_angles(mask[:,int(mask.shape[1]*0):int(mask.shape[1]*0.5)], 5)
+    #mask=cv2.resize(mask,(0,0), fx=2.0, fy=2.0)
+    for b in bands:
+      thetas_b+=[hough_vertical_angles(mask, band=b)]
 
+  thetas=[]
+  map(thetas.extend, thetas_b)
   thetas=np.array(thetas).flatten()
 
   #probably should whiten thetas
-  #3 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
-  centroids,_ = kmeans(thetas, 3)
+  #4 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
+  n_cl=4
+  centroids,_ = kmeans(thetas, n_cl)
   idx,_ = vq(thetas,centroids)
 
-  data=[list(thetas[idx==i]) for i in xrange(3)]
+  data=[list(thetas[idx==i]) for i in xrange(n_cl)]
   data=sorted([d for d in data if d]) #sort before merge
 
   changed=True
   while changed:
     changed=False
     for i in xrange(0, len(data)-1):
-      # merge if less than 5 degree away
-      if abs(np.median(data[i])-np.median(data[i+1]))<0.087:
+      #merge if less than 5 degree away
+      if abs(np.median(data[i])-np.median(data[i+1]))<0.17453/2:
         data[i]+=data[i+1]
         data.pop(i+1)
         changed=True
