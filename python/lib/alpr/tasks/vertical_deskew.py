@@ -1,14 +1,17 @@
 # -*- encoding: utf-8 -*-
 
 from alpr.tasks.common import *
+from alpr.tasks.zone_transform import *
+from alpr.tasks.horizontal_deskew import thresholded
 import cv2
 import numpy as np
-from scipy.cluster.vq import kmeans, vq
 from alpr.decorators import memoize
+from scipy.cluster.vq import kmeans, vq
 
-class TaskDetectAffine(Task):
-  def __init__(self, img, box, debug=None):
+class TaskVerticalDeskew(Task):
+  def __init__(self, img, parent, box, debug=None):
     self.img=img
+    self.parent=parent
     self.box=box
     self.debug=debug
     if debug is None:
@@ -17,26 +20,40 @@ class TaskDetectAffine(Task):
       self.debug=debug
 
   def execute(self):
-    gray = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
+    min_y=int(self.img.shape[0]*0.15)
+    max_y=int(self.img.shape[0]*0.95)
+    min_x=int(self.img.shape[1]*0.05)
+    max_x=int(self.img.shape[1]*0.95)
+    img_c=self.img[min_y:max_y,min_x:max_x]
+    gray = cv2.cvtColor(img_c, cv2.COLOR_BGR2GRAY)
 
-    #get single horizontal bias
-    h_angle=np.pi/2-horizontal_angle_from_edges(gray)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,8))
+    gray = clahe.apply(gray)
+
+    crop=self.box
+    crop=((crop[1],crop[0]), (crop[3],crop[2]))
+
+    #debug info
+    self.debug(gray, 'lpv0g')
+    ths=thresholded(gray)
+    for k in xrange(len(ths)):
+      self.debug(ths[k], 'lpv0th'+str(k))
+
+    result=[]
 
     #get multiple possible vertical biases
     v_angles=[-np.median(angles)+np.pi/2 for angles in vertical_angles(gray)]
+    for v_angle in v_angles:
+      d_parent, d_img = deskew_from_parent(self.parent, crop, v_angle)
+      self.debug(d_img, 'lpv1')
+      result+=[TaskResultVerticalDeskew(d_img, d_parent, self.box, v_angle)]
 
     #debug info
-    self.debug(gray, 'lpg')
-    ths=thresholded(gray)
-    for k in xrange(len(ths)):
-      self.debug(ths[k], 'lpg_th'+str(k))
-
-    img_=self.img.copy()
+    img_=img_c.copy()
     contours=big_enough_contours(ths[-1])
     for cnt in contours:
       cv2.drawContours(img_,[cnt],0,(0,127,127),2)
 
-    draw_line(img_, (img_.shape[0]/2, img_.shape[1]/2), h_angle)
     for j in xrange(len(v_angles)):
       v_a=v_angles[j]
       color=(0,0,255)
@@ -46,16 +63,24 @@ class TaskDetectAffine(Task):
         color=(255,0,0)
       draw_line(img_, (img_.shape[0]/2, img_.shape[1]/2), v_a, color)
 
-      self.debug(img_, "lpg_afc")
+      self.debug(img_, "lpv1l")
 
-    return TaskResultDetectAffine(self, self.img, [h_angle], v_angles)
+    return result
 
-class TaskResultDetectAffine(TaskResult):
-  def __init__(self, task, img, h_angles, v_angles):
-    self.task=task
+class TaskResultVerticalDeskew(TaskResult):
+  def __init__(self, img, parent, box, v_angle):
     self.img=img
-    self.h_angles=h_angles
-    self.v_angles=v_angles
+    self.parent=parent
+    self.box=box
+    self.v_angle=v_angle
+
+def deskew_from_parent(img, crop, v_angle):
+  v_angle=np.pi-v_angle
+
+  transform=np.mat([[1, -np.cos(v_angle)], [0, 1]])
+  d_img, d_crop=zone_transform(img, crop, transform)
+
+  return (d_img, d_crop)
 
 def draw_line(img, center, theta, color=(0,0,255)):
   cs = np.cos(theta)
@@ -67,35 +92,14 @@ def draw_line(img, center, theta, color=(0,0,255)):
   y2 = int(y0-100*sn)
   cv2.line(img, (x1,y1), (x2,y2), color, 2)
 
-@memoize
-def hough_horizontal_angles(img, band=None, n=3):
+#@memoize
+def hough_vertical_angles(img, band=None, n=5, cut=np.pi/3, precision=np.pi/180/4):
   edges = cv2.Canny(img, 50, 150, apertureSize = 3, L2gradient=True)
 
   if band is not None:
     edges=edges[int(edges.shape[0]*band[0]):int(edges.shape[0]*band[1]),int(edges.shape[1]*band[2]):int(edges.shape[1]*band[3])]
 
-  angle_precision=np.pi/180/4
-  lines = cv2.HoughLines(edges, 1, angle_precision, 3)
-
-  if lines is None:
-    return []
-
-  thetas=np.array(lines[0])[:,1]
-
-  #filter in first(assumed to be good horizontal) and nearest
-  thetas=thetas[(np.abs(thetas-thetas[0])<np.pi/12)]
-
-  return list(thetas[0:n])
-
-@memoize
-def hough_vertical_angles(img, band=None, n=5):
-  edges = cv2.Canny(img, 50, 150, apertureSize = 3, L2gradient=True)
-
-  if band is not None:
-    edges=edges[int(edges.shape[0]*band[0]):int(edges.shape[0]*band[1]),int(edges.shape[1]*band[2]):int(edges.shape[1]*band[3])]
-
-  angle_precision=np.pi/180/4
-  lines = cv2.HoughLines(edges, 1, angle_precision, 3)
+  lines = cv2.HoughLines(edges, 1, precision, 3)
 
   if lines is None:
     return []
@@ -103,50 +107,10 @@ def hough_vertical_angles(img, band=None, n=5):
   thetas=np.array(lines[0])[:,1]
 
   #filter in nearest to vertical
-  thetas=thetas[np.abs(thetas - np.pi/2) > np.pi/3]
+  thetas=thetas[np.abs(thetas - np.pi/2) > cut]
   thetas=thetas-np.pi*(thetas > np.pi/2)
 
   return list(thetas[0:n])
-
-def thresholded(gray):
-  window=21 #magic number
-
-  #simple
-  _,th1 = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-  #adaptive mean
-  th2 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, window, 2)
-  #adaptive gaussian
-  th3 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, window, 2)
-  #Otsu's
-  _,th4 = cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-  #Otsu's after Gaussian filtering
-  blur = cv2.GaussianBlur(gray,(3,3),0)
-  _,th5 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-
-  return [th1, th2, th3, th4 ,th5]
-
-def horizontal_angle_from_edges(gray):
-  #detect horizontal in different splits to compensate for car decorations
-  #use different binarization for stability
-  #FIXME should use this data to detect bend plates
-
-  bands=[(0.5, 1, 0.5, 1), (0.5, 1, 0, 0.5), (0, 0.5, 0.5, 1), (0, 0.5, 0, 0.5), (0, 0.5, 0.25, 0.75), (0.5, 1, 0.25, 0.75)]
-  thetas_b=[]
-  for b in bands:
-    thetas_b+=[hough_horizontal_angles(i, band=b) for i in [gray]+thresholded(gray)[1:3]]
-
-  thetas=[]
-  map(thetas.extend, thetas_b)
-  thetas=np.array(thetas).flatten()
-
-  theta_avg=np.median(thetas) #check median vs mean
-  theta_std=np.std(thetas)
-
-  #finter out uncommon value
-  thetas=thetas[np.abs(thetas-theta_avg)<theta_std]
-
-  theta=np.median(thetas) #check median vs mean
-  return theta
 
 def vertical_angles_from_edges(gray):
   #detect vertical lines from left and right part
@@ -193,10 +157,8 @@ def vertical_angles_from_contours(img):
     mask = np.zeros(img.shape, np.uint8)
     cv2.drawContours(mask, [cnt], 0, 255, -1)
 
-    #upscale to get better precision
-    #mask=cv2.resize(mask,(0,0), fx=2.0, fy=2.0)
     for b in bands:
-      thetas_b+=[hough_vertical_angles(mask, band=b)]
+      thetas_b+=[hough_vertical_angles(mask, band=b, n=5)]#, n=2)]
 
   thetas=[]
   map(thetas.extend, thetas_b)
@@ -222,13 +184,14 @@ def vertical_angles_from_contours(img):
         changed=True
         break
 
+
   return data
 
 def vertical_angles(img):
   ths=thresholded(img)
 
-  thetas2=vertical_angles_from_edges(img)
   thetas1=vertical_angles_from_contours(ths[-1])
+  thetas2=vertical_angles_from_edges(img)
 
   thetas1_=[np.median(c) for c in thetas1]
   thetas2_=[np.median(c) for c in thetas2]
@@ -239,6 +202,7 @@ def vertical_angles(img):
     if np.min(np.abs(theta2-thetas1_))<0.1:
       th+=[theta2]
 
+  #commented for test
   if len(th)==1:
     return [th[0]]
   elif len(th)>1:

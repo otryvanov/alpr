@@ -16,22 +16,7 @@ class TaskZoneTransform(Task):
       self.debug=debug
 
   def execute(self):
-    result=self.img.copy()
-    if self.transform is not None:
-      center=(self.img.shape[1]/2, self.img.shape[0]/2)
-      if self.crop:
-        center=[int(self.crop[0][1]+self.crop[1][1]/2.0), int(self.crop[0][0]+self.crop[1][0]/2.0)]
-      center=np.mat(center)
-      center=np.transpose(center)
-
-      delta=center-np.dot(self.transform, center)
-      transform_mat=np.hstack((self.transform, delta))
-
-      cv2.warpAffine(self.img, transform_mat, (self.img.shape[1], self.img.shape[0]), result,
-                     cv2.cv.CV_INTER_LINEAR+cv2.cv.CV_WARP_FILL_OUTLIERS,cv2.BORDER_TRANSPARENT)
-
-    if self.crop is not None:
-      result=result[self.crop[0][0]:self.crop[0][0]+self.crop[1][0], self.crop[0][1]:self.crop[0][1]+self.crop[1][1]]
+    result=zone_transform(self.img, self.crop, self.transform)[1]
 
     self.debug(result, 'trmd')
 
@@ -40,3 +25,23 @@ class TaskZoneTransform(Task):
 class TaskResultZoneTransform(TaskResult):
   def __init__(self, img):
     self.img=img
+
+def zone_transform(img, crop=None, transform=None):
+  result=img.copy()
+  if transform is not None:
+    center=(img.shape[1]/2, img.shape[0]/2)
+    if crop:
+      center=[int(crop[0][1]+crop[1][1]/2.0), int(crop[0][0]+crop[1][0]/2.0)]
+    center=np.mat(center)
+    center=np.transpose(center)
+    delta=center-np.dot(transform, center)
+    transform_mat=np.hstack((transform, delta))
+
+    cv2.warpAffine(img, transform_mat, (img.shape[1], img.shape[0]), result,
+                   cv2.cv.CV_INTER_LINEAR+cv2.cv.CV_WARP_FILL_OUTLIERS,cv2.BORDER_TRANSPARENT)
+
+  result_crpd=result
+  if crop is not None:
+    result_crpd=result[crop[0][0]:crop[0][0]+crop[1][0], crop[0][1]:crop[0][1]+crop[1][1]]
+
+  return result, result_crpd

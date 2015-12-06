@@ -4,3 +4,4 @@ neg_*
 pos_*
 *.pyc
 env
+tmp

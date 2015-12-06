@@ -1,6 +1,7 @@
 # -*- encoding: utf-8 -*-
 
 from alpr.tasks.common import *
+from alpr.tasks.zone_transform import *
 import cv2
 import numpy as np
 
@@ -14,7 +15,6 @@ class TaskFineCrop(Task):
       self.debug=debug
 
   def execute(self):
-
     #detect vertical boundary using only central horizontal part to avoid mess at borders
     v_splits=self.detect_vertical_boundary(self.img[:,int(self.img.shape[1]*0.15):int(self.img.shape[1]*0.85)])
 
@@ -30,13 +30,12 @@ class TaskFineCrop(Task):
       for h_s in h_splits:
         h_bounded=v_bounded[:,h_s[1]-1:h_s[2]+1]
         h_bounded=cv2.resize(h_bounded, (520/4, 112/4)) #FIXME possible multiply by 1.2
-
         self.debug(h_bounded, "af_hb")
 
-        results+=[TaskResultFineCrop(h_bounded)]
+        results+=[TaskResultFineCrop(h_bounded[2:-2,2:-2])]
 
     if len(results)==0:
-      results+=[TaskResultFineCrop(self.img)]
+      results+=[TaskResultFineCrop(self.img[1:-1,1:-1])]
 
     return results
 
@@ -59,6 +58,8 @@ class TaskFineCrop(Task):
     hl=np.mean(255-img_, 1)
     hl=hl/np.max(hl)*255
     hl=hl<np.mean(hl)+np.std(hl)
+    #FIXME this makes more sense than previous line but does not work
+    #hl=hl<127
 
     min_y=[n for n in xrange(2,len(hl)-2) if hl[n] and hl[n+1] and not hl[n-1]]
     max_y=[n for n in xrange(len(hl)-3, 2,-1) if hl[n] and hl[n-1] and not hl[n+1]]
@@ -102,7 +103,7 @@ class TaskFineCrop(Task):
     min_x=[n for n in min_x if n<img.shape[1]*0.7]
     max_x=[n for n in max_x if n>img.shape[1]*0.3]
 
-    min_length=expected_length*0.6 #magic number
+    min_length=expected_length*0.5 #magic number, volatile, should move to params
     max_length=expected_length*1.5
 
     #fallback
@@ -118,6 +119,7 @@ class TaskFineCrop(Task):
     self.debug(th, "af_hb_th")
     self.debug(img_, "af_hb_im")
 
+    #FIXME should return something
     return splits
 
 class TaskResultFineCrop(TaskResult):

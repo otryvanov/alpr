@@ -30,6 +30,7 @@ for f in posfiles:
   img=cv2.imread(f)
   img=cv2.resize(img, winSize, interpolation = cv2.INTER_CUBIC)
   img=cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+  print "Loading positive", f
 
   imgs=[img, cv2.flip(img,1), cv2.flip(img,0), cv2.flip(cv2.flip(img,1),0)]
   for im in imgs:
@@ -43,6 +44,7 @@ for f in negfiles:
   img=cv2.imread(f)
   img=cv2.resize(img, winSize, interpolation = cv2.INTER_CUBIC)
   img=cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+  print "Loading negative", f
 
   imgs=[img, cv2.flip(img,1), cv2.flip(img,0), cv2.flip(cv2.flip(img,1),0)]
   for im in imgs:
@@ -54,6 +56,9 @@ for f in negfiles:
 
 descs=np.array(descs, np.float32)
 resps=np.array(resps, np.float32)
+
+print "Training with %d samples" % resps.size
+print resps
 
 svm = cv2.SVM()
 svm_params = dict(kernel_type = cv2.SVM_LINEAR, svm_type = cv2.SVM_C_SVC, C = 1)

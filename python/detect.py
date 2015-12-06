@@ -23,14 +23,14 @@ if m:
 
 m = re.match(r'.*2015_08_1[01]_pic_02_.*.jpg', img_name)
 if m:
-  crop=((350,200), (560,980))
+  crop=((350,200), (520,800))
 
 m = re.match(r'.*2015_10_1[0-9]_pic_0[0-1]_.*.jpg', img_name)
 if m:
   crop=((300,250), (260,530))
   #angle1=-6.2/180*np.pi
   #angle2=85.5/180*np.pi
-  #r=1.5
+  #r=1.1
   #transform=np.mat([[np.cos(angle1), r*np.cos(angle2)], [np.sin(angle1), r*np.sin(angle2)]])
   #transform=transform/np.linalg.det(transform)
   #transform=np.linalg.inv(transform)
