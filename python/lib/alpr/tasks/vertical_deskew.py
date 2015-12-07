@@ -6,7 +6,6 @@ from alpr.tasks.horizontal_deskew import thresholded
 import cv2
 import numpy as np
 from alpr.decorators import memoize
-from scipy.cluster.vq import kmeans, vq
 
 class TaskVerticalDeskew(Task):
   def __init__(self, img, parent, box, debug=None):
@@ -128,8 +127,12 @@ def vertical_angles_from_edges(gray):
   #probably should whiten thetas
   #4 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
   n_cl=4
-  centroids,_ = kmeans(thetas, n_cl)
-  idx,_ = vq(thetas,centroids)
+
+  thetas=np.float32(thetas)
+  criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 0.001)
+  flags = cv2.KMEANS_PP_CENTERS
+  compactness,idx,centers = cv2.kmeans(thetas,n_cl,criteria,10,flags)
+  idx=idx.flatten()
 
   data=[list(thetas[idx==i]) for i in xrange(n_cl)]
   data=sorted([d for d in data if d]) #sort before merge
@@ -167,8 +170,12 @@ def vertical_angles_from_contours(img):
   #probably should whiten thetas
   #4 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
   n_cl=4
-  centroids,_ = kmeans(thetas, n_cl)
-  idx,_ = vq(thetas,centroids)
+
+  thetas=np.float32(thetas)
+  criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 0.001)
+  flags = cv2.KMEANS_PP_CENTERS
+  compactness,idx,centers = cv2.kmeans(thetas,n_cl,criteria,10,flags)
+  idx=idx.flatten()
 
   data=[list(thetas[idx==i]) for i in xrange(n_cl)]
   data=sorted([d for d in data if d]) #sort before merge
@@ -183,7 +190,6 @@ def vertical_angles_from_contours(img):
         data.pop(i+1)
         changed=True
         break
-
 
   return data
 
