@@ -6,7 +6,7 @@ import numpy as np
 import re
 import time
 import copy
-from alpr.decorators import memoize
+from alpr.decorators import memoize, memoize_test_letter, memoize_compute_hog
 
 class TaskSVMLetterDetector(Task):
   def __init__(self, img, hog_descriptor, svm_letters, debug=None):
@@ -124,7 +124,7 @@ class TaskSVMLetterDetector(Task):
     while len(boxes)>0:
       box=boxes.pop()
       m+=1
-      X,Y,W,H, deep = box
+      X,Y,W,H, deep, splt = box
 
       b_img=gray[Y-1:Y+H+1, X-1:X+W+1]
 
@@ -134,38 +134,43 @@ class TaskSVMLetterDetector(Task):
       for letter in self.search_order:
         if letter in ['HM', '8B']:
           continue
-        score=test_letter(b_img, self.svm_letters[letter])
+        score=self.test_letter((X,Y,W,H), gray, letter)
         if score<0:
           self.debug(b_img, "svm1_f_"+letter+"_"+str(m))
-          if score<min_score:
-            min_score=score
-            min_letter=letter
+        if score<min_score:
+          min_score=score
+          min_letter=letter
 
       if min_score<0:
         plate+=[(X+W/2.0, min_letter, (X,Y,W,H), -min_score)]
-      else:
-        self.debug(b_img, "svm1_nf_"+str(m))
 
       if min_score>0:
         for letter in ['8dot', 'dotO', 'dotM', 'dotB', 'dotC']:
-          score=test_letter(b_img, self.svm_letters[letter])
+          score=self.test_letter((X,Y,W,H), gray, letter)
           if score<0:
             self.debug(b_img, "svm1_f_"+letter+"_"+str(m))
-            if score<min_score:
-              min_score=score
-              if letter=='8dot':
-                min_letter='8'
-              if letter=='dotO':
-                min_letter='0O'
-              if letter=='dotM':
-                min_letter='M'
-              if letter=='dotB':
-                min_letter='B'
-              if letter=='dotC':
-                min_letter='C'
+          if score<min_score:
+            min_score=score
+            if letter=='8dot':
+              min_letter='8'
+            if letter=='dotO':
+              min_letter='0O'
+            if letter=='dotM':
+              min_letter='M'
+            if letter=='dotB':
+              min_letter='B'
+            if letter=='dotC':
+              min_letter='C'
+            if letter=='dotH':
+              min_letter='H'
+            if letter=='dotE':
+              min_letter='E'
 
         if min_score<0:
           plate+=[(X+W/2.0, min_letter, (X,Y,W,H), -min_score)]
+
+      if min_score>0:
+        self.debug(b_img, "svm1_nf_"+str(m))
 
     for box in get_positional_boxes(gray, plate):
       m+=1
@@ -260,9 +265,38 @@ class TaskSVMLetterDetector(Task):
       if cnt_box_area>plate_area/6 or cnt_box_area<70 and prune:
         continue
 
-      boxes+=[(X,Y,W,H, False)]
+      boxes+=[(X,Y,W,H, False, True)]
 
     return boxes
+
+  #@memoize_test_letter
+  def test_letter(self, box, gray, letter):
+    svm=self.svm_letters[letter]
+    desc=self.compute_hog(box, gray)
+    score_=svm.predict(desc, returnDFVal=True)
+
+    return -score_
+
+  #this is runtime potential problem
+  @memoize_compute_hog
+  def compute_hog(self, box, gray):
+    X,Y,W,H=box
+    gray=gray[Y-1:Y+H+1, X-1:X+W+1]
+
+    winSize = (20, 30)
+    blockSize = (4,6)
+    blockStride = (2,3)
+    cellSize = (2,3)
+    nbins=9
+
+    winStride = (20,30)
+    padding = (0,0)
+
+    gray=cv2.resize(gray, winSize, interpolation = cv2.INTER_CUBIC)
+    hog=cv2.HOGDescriptor(winSize, blockSize,blockStride,cellSize, nbins)
+    desc = hog.compute(gray, winStride, padding, ((0, 0),))
+
+    return desc
 
   def get_positional_boxes(self, th):
     sizes=[(0,25, False),(16,20, False),(27,20, False),(37,20, False), (48,20, False), (59, 20, False), (65,35, True), (85,15, True)]
@@ -280,25 +314,6 @@ class TaskResultSVMLetterDetector(TaskResult):
   def __init__(self, plate, localization):
     self.plate=plate
     self.localization=localization
-
-from scipy.cluster.vq import kmeans, vq
-
-def test_letter(gray, svm):
-  winSize = (20, 30)
-  blockSize = (4,6)
-  blockStride = (2,3)
-  cellSize = (2,3)
-  nbins=9
-
-  winStride = (20,30)
-  padding = (0,0)
-
-  gray=cv2.resize(gray, winSize, interpolation = cv2.INTER_CUBIC)
-  hog=cv2.HOGDescriptor(winSize, blockSize,blockStride,cellSize, nbins)
-  desc = hog.compute(gray, winStride, padding, ((0, 0),))
-  score_=svm.predict(desc, returnDFVal=True)
-
-  return -score_
 
 def get_positional_boxes(gray, plate):
     mask=np.zeros(gray.shape, np.uint8)
