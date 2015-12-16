@@ -3,10 +3,9 @@
 from alpr.tasks.common import *
 import cv2
 import numpy as np
-import re
-import time
 import copy
-from alpr.decorators import memoize, memoize_test_letter, memoize_compute_hog
+from alpr.decorators import *
+from alpr.utils import *
 
 class TaskSVMLetterDetector(Task):
   def __init__(self, img, hog_descriptor, svm_letters, debug=None):
@@ -49,132 +48,212 @@ class TaskSVMLetterDetector(Task):
     self.search_yscales=[1.0, 1.2]
 
   def execute(self):
-    img=self.img#[1:25]
+    img=self.img
+
+    #gray is used for classification and search, gray_c only for search
     gray=cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,8))
+    gray_c = clahe.apply(gray)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
-
-    #guess white color
-    white_c=np.median(gray)
-    white_c=np.median(gray[gray>white_c])
+    #guess 'white' color
+    white=np.median(gray)
+    white=np.mean(gray[gray>white])
+    white_c=np.median(gray_c)
+    white_c=np.mean(gray_c[gray_c>white_c])
 
     window=21
-    #simple
-    _,th1 = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
     #adaptive mean
     th2 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, window, 2)
     #adaptive gaussian
     th3 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, window, 2)
     #Otsu's
     _,th4 = cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-    #Otsu's after Gaussian filtering
-    blur = cv2.GaussianBlur(gray,(3,3),0)
-    _,th5 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    #adaptive mean
+    th_c2 = cv2.adaptiveThreshold(gray_c, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, window, 2)
+    #adaptive gaussian
+    th_c3 = cv2.adaptiveThreshold(gray_c, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, window, 2)
+    #Otsu's
+    _,th_c4 = cv2.threshold(gray_c,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
-    #extend borders
-    img=cv2.copyMakeBorder(img, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=(int(white_c), int(white_c), int(white_c)))
-    gray=cv2.copyMakeBorder(gray, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=int(white_c))
-
-    th1 = cv2.copyMakeBorder(th1, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=255)
-    th2 = cv2.copyMakeBorder(th2, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=255)
-    th3 = cv2.copyMakeBorder(th3, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=255)
-    th4 = cv2.copyMakeBorder(th4, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=255)
-    th5 = cv2.copyMakeBorder(th5, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=255)
-
-    #FIXME destroy russian flag
-    #th[22:, 100:]=255
-    #th[:, :5]=255
-    #th[:, -5:]=255
+    #extend borders(probably only needed for detectMultiscale)
+    img=cv2.copyMakeBorder(img, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=(int(white), int(white), int(white)))
+    gray=cv2.copyMakeBorder(gray, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=int(white))
+    gray_c=cv2.copyMakeBorder(gray_c, 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=int(white_c))
+    ths=[th2, th3, th4, th_c2, th_c3, th_c4]
+    for i in xrange(len(ths)):
+      ths[i]=cv2.copyMakeBorder(ths[i], 4, 4, 2, 2, cv2.BORDER_CONSTANT, value=255)
+    th2, th3, th4, th_c2, th_c3, th_c4 = ths
 
     self.debug(img, "svm_img")
     self.debug(gray, "svm_gr")
-    self.debug(th1, "svm_th1")
+    self.debug(gray_c, "svm_gr_c")
     self.debug(th2, "svm_th2")
     self.debug(th3, "svm_th3")
     self.debug(th4, "svm_th4")
-    self.debug(th5, "svm_th5")
-
-    #th1_de=th1.copy()
-    #th1_de = cv2.dilate(th1_de, kernel, iterations = 1)
-    #th1_de = cv2.erode(th1_de, kernel, iterations = 1)
-    #th2_de=th2.copy()
-    #th2_de = cv2.dilate(th2_de, kernel, iterations = 1)
-    #th2_de = cv2.erode(th2_de, kernel, iterations = 1)
-    #th3_de=th3.copy()
-    #th3_de = cv2.dilate(th3_de, kernel, iterations = 1)
-    #th3_de = cv2.erode(th3_de, kernel, iterations = 1)
-    #th4_de=th4.copy()
-    #th4_de = cv2.dilate(th4_de, kernel, iterations = 1)
-    #th4_de = cv2.erode(th4_de, kernel, iterations = 1)
-    #th5_de=th5.copy()
-    #th5_de = cv2.dilate(th5_de, kernel, iterations = 1)
-    #th5_de = cv2.erode(th5_de, kernel, iterations = 1)
-    #self.debug(th1_de, "svm_th1de")
-    #self.debug(th2_de, "svm_th2de")
-    #self.debug(th3_de, "svm_th3de")
-    #self.debug(th4_de, "svm_th4de")
-    #self.debug(th5_de, "svm_th5de")
+    self.debug(th_c2, "svm_th_c2")
+    self.debug(th_c3, "svm_th_c3")
+    self.debug(th_c4, "svm_th_c4")
 
     plate=[]
 
-    m=0
-    boxes=self.get_boxes_from_contour(th4, gray)+self.get_boxes_from_contour(th3, gray)+self.get_boxes_from_contour(th2, gray)
-    #this one should get expanded box
-    #boxes+=self.get_boxes_from_contour(th1, gray)
-    while len(boxes)>0:
-      box=boxes.pop()
-      m+=1
-      X,Y,W,H, deep, splt = box
+    min_height=10
+    min_width=5
+    min_area=70
+    epsilon=0.00001
+
+    @memoize
+    def max_score_hsplit(box, n=3):
+      x,y,w,h=box
+      l,s=max_score(box)
+
+      if s<0.0:
+        l_s=[(s, [(l,s,box)])]
+      else:
+        l_s=[(epsilon, [(l,epsilon,box)])]
+
+      if n>1:
+        for w0 in xrange(1, w):
+          if w0*h<min_area or w0<min_width or h<min_height:
+            l0, s0=(None, epsilon)
+          else:
+            l0, s0=max_score((x,y,w0,h))
+
+          if (w-w0)*h<min_area or (w-w0)<min_width or h<min_height:
+            s1, ls1=(epsilon, [(None, epsilon, (x+w0,y,w-w0,h))])
+          else:
+            s1, ls1=max_score_hsplit((x+w0,y,w-w0,h),n-1)
+
+          if s0>epsilon:
+            s0=epsilon
+
+          score=(s0*w0+s1*(w-w0)+0.0)/w
+
+          l_s+=[(score, [(l0, s0, (x,y,w0,h))]+ls1)]
+      return min(l_s)
+
+    letters=['1','2','3','4','5','6','7','8','9','0O','A','B','C','E','H','K','M','P','T','X','Y']
+    @memoize_simple
+    def max_score(box):
+        x,y,w,h=box
+        if w*h<min_area or w<min_width or h<min_height:
+          return (None, 1.0)
+
+        l_s=[(l, self.test_letter(box, gray, l)) for l in letters]
+        return min(l_s, key=lambda x: x[1])
+
+    letter_ligatures=['8dot', 'dotO', 'dotM', 'dotB', 'dotC', 'dotH', 'dotE', 'dotP']
+    @memoize_simple
+    def max_score_ligatures(box):
+        x,y,w,h=box
+        if w*h<min_area or w<min_width or h<min_height:
+          return (None, 1.0)
+
+        l_s=[(l, self.test_letter(box, gray, l)) for l in letter_ligatures]
+        return min(l_s, key=lambda x: x[1])
+
+    boxes=[]
+    for th in ths:
+      boxes+=self.get_boxes_from_contour(th, gray)
+    boxes=list(set(boxes)) #get uniq boxes
+
+    #annotate each box with name for debug, letter, score, cropped image
+    boxes=[box+(str(box), None, 1.0, None) for box in boxes]
+
+    #search all boxes for letters
+    boxes_left=[]
+    while boxes:
+      X,Y,W,H,m,min_letter,min_score,b_img = boxes.pop()
 
       b_img=gray[Y-1:Y+H+1, X-1:X+W+1]
-
-      min_score=1.0
-      min_letter=None
       self.debug(b_img, "svm1_t_"+str(m))
-      for letter in self.search_order:
-        if letter in ['HM', '8B']:
-          continue
-        score=self.test_letter((X,Y,W,H), gray, letter)
-        if score<0:
-          self.debug(b_img, "svm1_f_"+letter+"_"+str(m))
-        if score<min_score:
-          min_score=score
-          min_letter=letter
+
+      min_letter, min_score=max_score((X,Y,W,H))
 
       if min_score<0:
-        plate+=[(X+W/2.0, min_letter, (X,Y,W,H), -min_score)]
+        self.debug(b_img, "svm1_f_"+min_letter+"_"+str(m))
+        plate+=[(min_letter, (X,Y,W,H), -min_score)]
+      else:
+        boxes_left+=[(X,Y,W,H,m,min_letter,min_score, b_img)]
 
-      if min_score>0:
-        for letter in ['8dot', 'dotO', 'dotM', 'dotB', 'dotC']:
-          score=self.test_letter((X,Y,W,H), gray, letter)
-          if score<0:
-            self.debug(b_img, "svm1_f_"+letter+"_"+str(m))
-          if score<min_score:
-            min_score=score
-            if letter=='8dot':
-              min_letter='8'
-            if letter=='dotO':
-              min_letter='0O'
-            if letter=='dotM':
-              min_letter='M'
-            if letter=='dotB':
-              min_letter='B'
-            if letter=='dotC':
-              min_letter='C'
-            if letter=='dotH':
-              min_letter='H'
-            if letter=='dotE':
-              min_letter='E'
+    #prune plate, distructive to origianl
+    plate=prune_plate(plate, threshold=0.799)
 
-        if min_score<0:
-          plate+=[(X+W/2.0, min_letter, (X,Y,W,H), -min_score)]
+    #are we done?
+    #RUSSIAN PLATE TYPE1 SPECIFIC
+    alphas, nums, alphanums=get_stats_symbols(plate)
+    if alphanums>=9:
+      return TaskResultSVMLetterDetector(plate)
 
-      if min_score>0:
+    #prune boxes by content
+    hranges=get_free_hranges(gray, plate, 2)
+    hranges=range_diff_many([(0,gray.shape[1])], [(r[0], r[1]-r[0]+1) for r in hranges])
+    hranges=[r for r in hranges if r[1]>0]
+
+    boxes=boxes_left
+    boxes_left=[]
+    while boxes:
+      X,Y,W,H,m,min_letter,min_score,b_img = boxes.pop()
+
+      fr=range_diff_many([(X,W)], hranges)
+      for r in fr:
+        X, W=r
+        if W<min_width:
+          continue
+        b_img=gray[Y-1:Y+H+1, X-1:X+W+1]
+        min_letter, min_score=max_score((X,Y,W,H))
+        m_r=str(m)+"_"+str(r)
+        boxes_left+=[(X,Y,W,H,m_r,min_letter,min_score, b_img)]
+        self.debug(b_img, "svm1_t2_"+str(m_r))
+
+    #search known 'ligatures'
+    boxes=boxes_left
+    boxes_left=[]
+    while boxes:
+      X,Y,W,H,m,min_letter,min_score,b_img = boxes.pop()
+
+      min_letter_new, min_score_new=max_score_ligatures((X,Y,W,H))
+
+      if min_score_new<0:
+        min_letter=min_letter_new.replace('dot','').replace('O','0O')
+        min_score=min_score_new
+        self.debug(b_img, "svm1_fl_"+min_letter+"_"+str(m))
+        plate+=[(min_letter, (X,Y,W,H), -min_score)]
+      else:
+        boxes_left+=[(X,Y,W,H,m,min_letter,min_score,b_img)]
+
+    #are we done?
+    #RUSSIAN PLATE TYPE1 SPECIFIC
+    #alphas, nums, alphanums=get_stats_symbols(plate)
+    #if alphanums>=9:
+    #  return TaskResultSVMLetterDetector(plate)
+
+    #search by splitting
+    boxes=boxes_left
+    boxes_left=[]
+    while boxes:
+      X,Y,W,H,m,min_letter,min_score,b_img = boxes.pop()
+
+      s, splt=max_score_hsplit((X,Y,W,H), n=3)
+
+      for k in xrange(len(splt)):
+        letter_s, score_s, box_s=splt[k]
+        if score_s<0:
+          b_img_s=gray[box_s[1]-1:box_s[1]+box_s[3]+1, box_s[0]-1:box_s[0]+box_s[2]+1]
+          self.debug(b_img_s, "svm1_fspl_"+letter_s+"_"+str(m)+"_"+str(k))
+          plate+=[(letter_s, box_s, -score_s)]
+
+      if s>0:
         self.debug(b_img, "svm1_nf_"+str(m))
 
+    #prune plate, distructive to original
+    plate=prune_plate(plate, threshold=0.799) #distructive
+
+    m=200
     for box in get_positional_boxes(gray, plate):
       m+=1
       X,Y,W,H, deep = box
+      if W<min_width:
+        continue
       b_img=gray[Y:Y+H,X:X+W]
 
       fscale=2
@@ -204,7 +283,7 @@ class TaskSVMLetterDetector(Task):
         letter=search_list.pop(0)
 
         for yscale in search_yscales:
-          b_img_=cv2.resize(b_img, (0,0), fx=1.0, fy=yscale) # rescale in case plate contain subline
+          b_img_=cv2.resize(b_img, (0,0), fx=1.0, fy=yscale) # rescale in case a plate contains subline
 
           found, F=self.hog_descriptor[letter].detectMultiScale(b_img_, 1.05)
           n=0
@@ -226,7 +305,7 @@ class TaskSVMLetterDetector(Task):
             Yn=Y+y/fscale/yscale
             Wn=w/fscale
             Hn=h/fscale/yscale
-            plate+=[(Xn+Wn/2.0, letter, (Xn,Yn,Wn,Hn), f)]
+            plate+=[(letter, (Xn,Yn,Wn,Hn), f)]
 
           if len(found)>0 and not search_confusion and not deep:
             search_confusion=True
@@ -239,7 +318,7 @@ class TaskSVMLetterDetector(Task):
             self.search_yscales=[yscale, search_yscales[0]]
           break
 
-    return TaskResultSVMLetterDetector([l[1] for l in sorted(plate)], [l[1:] for l in sorted(plate)])
+    return TaskResultSVMLetterDetector(plate)
 
   def get_boxes_from_contour(self, th, gray, prune=True):
     contours, _ = cv2.findContours(th.copy(), cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -259,25 +338,25 @@ class TaskSVMLetterDetector(Task):
       self.debug(gray_, "svmcn_"+str(m))
 
       #select reasonable bounding boxes
-      #print cnt_box_area
-      if (W+0.0)/H>2.0 or (H+0.0)/W>3.0:
+      if (W+0.0)/H>3.0 or (H+0.0)/W>3.0:
         continue
       if cnt_box_area>plate_area/6 or cnt_box_area<70 and prune:
         continue
 
-      boxes+=[(X,Y,W,H, False, True)]
+      boxes+=[(X,Y,W,H)]
 
     return boxes
 
   #@memoize_test_letter
   def test_letter(self, box, gray, letter):
     svm=self.svm_letters[letter]
+
     desc=self.compute_hog(box, gray)
     score_=svm.predict(desc, returnDFVal=True)
 
     return -score_
 
-  #this is runtime potential problem
+  #FIXME this is runtime potential problem
   @memoize_compute_hog
   def compute_hog(self, box, gray):
     X,Y,W,H=box
@@ -293,6 +372,7 @@ class TaskSVMLetterDetector(Task):
     padding = (0,0)
 
     gray=cv2.resize(gray, winSize, interpolation = cv2.INTER_CUBIC)
+
     hog=cv2.HOGDescriptor(winSize, blockSize,blockStride,cellSize, nbins)
     desc = hog.compute(gray, winStride, padding, ((0, 0),))
 
@@ -311,36 +391,89 @@ class TaskSVMLetterDetector(Task):
     return boxes
 
 class TaskResultSVMLetterDetector(TaskResult):
-  def __init__(self, plate, localization):
+  def __init__(self, plate):
+
     self.plate=plate
-    self.localization=localization
+    self.localization=sorted(plate, key=lambda x: x[1][0]+x[1][2]/2.0)
+
+def get_free_hranges(gray, plate, pad=3):
+  mask=np.zeros(gray.shape, np.uint8)
+
+  if len(plate)==0:
+    return [(0,gray.shape[1])]
+
+  for p in plate:
+    l, box, score=p
+    cv2.rectangle(mask, (box[0]+pad, box[1]), (box[0]+box[2]-pad, box[1]+box[3]), 255, thickness=-1)
+  h_gaps=np.mean(mask, 0)
+
+  #from matplotlib import pyplot as plt
+  #plt.imshow(mask,'gray')
+  #plt.show()
+  #plt.imshow(gray,'gray')
+  #plt.show()
+
+  h_med=np.median(h_gaps[h_gaps>0])
+  h_gaps=(h_gaps>h_med/2)+0
+
+  def ranges(markers):
+     lm=len(markers)
+     h1=np.array([i for i in range(lm) if markers[i]==0 and (i==0 or markers[i-1]==1)])
+     h2=np.array([i for i in range(lm) if markers[i]==0 and (i==lm-1 or markers[i+1]==1)])
+
+     return [(h, np.min(h2[h2>=h])+1) for h in h1]
+
+  rgs=[r for r in ranges(h_gaps) if (r[1]-r[0]>5)] #min_width, REFACTOR
+
+  return rgs
 
 def get_positional_boxes(gray, plate):
-    mask=np.zeros(gray.shape, np.uint8)
-    for p in plate:
-      x0, l, box, score=p
-      cv2.rectangle(mask, (box[0]+3, box[1]), (box[0]+box[2]-3, box[1]+box[3]), 255, thickness=-1)
 
-    h_gaps=np.mean(mask, 0)
-    h_med=np.median(h_gaps[h_gaps>0])
-    h_gaps=(h_gaps>h_med/2)+0
+    return [(r[0],0,r[1]-r[0],gray.shape[0], True) for r in get_free_hranges(gray, plate)]
 
-    def ranges(gaps):
-      lg=len(gaps)
-      h1=np.array([i for i in range(lg) if gaps[i]==0 and (i==0 or gaps[i-1]==1)])
-      h2=np.array([i for i in range(lg) if gaps[i]==0 and (i==lg-1 or gaps[i+1]==1)])
-      gps=[]
-      for h in h1:
-        gps+=[(h, np.min(h2[h2>=h])+1)]
+def get_stats_symbols(plate):
+  letters=[l[0] for l in plate]
 
-      return gps
+  alphas=0
+  nums=0
+  alphanums=len(letters)
 
-    rgs=[r for r in ranges(h_gaps) if (r[1]-r[0]>5)]
-    #print  rgs
-    #from matplotlib import pyplot as plt
-    #plt.imshow(mask,'gray')
-    #plt.show()
-    #plt.imshow(gray,'gray')
-    #plt.show()
+  return alphas, nums, alphanums
 
-    return [(r[0],0,r[1]-r[0],gray.shape[0], True) for r in rgs]
+def prune_plate(plate, threshold=0.999):
+    changed=True
+    ovlp=[[(overlap(li[1], lj[1])+0.0)/(li[1][2]*li[1][3]) for lj in plate] for li in plate]
+
+    while changed:
+      changed=False
+      for j in xrange(len(plate)):
+        if plate[j] is None:
+          continue
+        for i in xrange(len(plate)):
+          if plate[i] is None:
+            continue
+
+          if i==j:
+            continue
+
+          if plate[i][0]==plate[j][0] and max(ovlp[i][j], ovlp[j][i])> threshold:
+            if plate[i][2]>plate[j][2]:
+              #drop symbols detected by multiple boxes
+              plate[j]=None
+              break
+            else:
+              plate[i]=None
+
+            changed=True
+
+    idx=[i for i in range(len(ovlp)) if plate[i] is not None]
+
+    #debug
+    #for i in idx:
+    #  for j in idx:
+    #    if i!=j:
+    #      if ovlp[i][j]>0.201 and plate[i][1]==plate[j][1]:
+    #        print "prune_plate", i, j ,plate[i], plate[j], max(ovlp[i][j], ovlp[j][i])
+    #        pass
+
+    return [l for l in plate if l is not None]

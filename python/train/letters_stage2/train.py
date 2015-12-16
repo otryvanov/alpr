@@ -96,3 +96,7 @@ rho = float( root.getchildren()[0].getchildren()[-1].getchildren()[0].getchildre
 svmvec = [float(x) for x in re.sub( '\s+', ' ', SVs.text ).strip().split(' ')]
 svmvec.append(-rho)
 pickle.dump(svmvec, open("svm.pickle", 'w'))
+
+for i in xrange(len(descs)):
+  score_=svm.predict(descs[i], returnDFVal=True)
+  print i, resps[i], score_

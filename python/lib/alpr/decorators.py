@@ -18,7 +18,7 @@ def memoize_test_letter(obj):
 
   @functools.wraps(obj)
   def memoizer(*args, **kwargs):
-    key = str(args[1])+args[3]+str(hash(args[2].tostring()))
+    key = str(args[1])+args[3]
     if key not in cache:
       cache[key] = obj(*args, **kwargs)
     return cache[key]
@@ -29,8 +29,15 @@ def memoize_compute_hog(obj):
 
   @functools.wraps(obj)
   def memoizer(*args, **kwargs):
-    key = str(args[1])+str(hash(args[2].tostring()))
+    key = str(args[1])
     if key not in cache:
       cache[key] = obj(*args, **kwargs)
     return cache[key]
   return memoizer
+
+def memoize_simple(f):
+    class memodict(dict):
+      def __missing__(self, key):
+        ret = self[key] = f(key)
+        return ret
+    return memodict().__getitem__

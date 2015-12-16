@@ -31,7 +31,7 @@ class TaskMergePlate(Task):
           if i==j:
             continue
 
-          if loc[i][0]==loc[j][0] and (ovlp[i][j]>0.8 or ovlp[j][i]>0.8):
+          if loc[i][0]==loc[j][0] and (ovlp[i][j]>0.75 or ovlp[j][i]>0.75):
             #drop symbols detected on multiple scales
             loc[i]=None
             changed=True
