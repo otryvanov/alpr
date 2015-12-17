@@ -131,25 +131,57 @@ class TaskSVMLetterDetector(Task):
           l_s+=[(score, [(l0, s0, (x,y,w0,h))]+ls1)]
       return min(l_s)
 
+    #functions defined as closures to avoid passing multiple and/or complex arguments
+    #which allows memoize_simple use and autoresets after execute comletion
+    @memoize_simple
+    def compute_hog(box):
+      X,Y,W,H=box
+      gray_=gray[Y-1:Y+H+1, X-1:X+W+1] #FIXME should check area bounds
+
+      winSize = (20, 30)
+      blockSize = (4,6)
+      blockStride = (2,3)
+      cellSize = (2,3)
+      nbins=9
+
+      winStride = (20,30)
+      padding = (0,0)
+
+      gray_=cv2.resize(gray_, winSize, interpolation = cv2.INTER_CUBIC)
+
+      hog=cv2.HOGDescriptor(winSize, blockSize,blockStride,cellSize, nbins)
+      desc = hog.compute(gray_, winStride, padding, ((0, 0),))
+
+      return desc
+
+    def test_letter(box, letter):
+      svm=self.svm_letters[letter]
+
+      desc=compute_hog(box)
+      score_=svm.predict(desc, returnDFVal=True)
+
+      return -score_
+
     letters=['1','2','3','4','5','6','7','8','9','0O','A','B','C','E','H','K','M','P','T','X','Y']
     @memoize_simple
     def max_score(box):
-        x,y,w,h=box
-        if w*h<min_area or w<min_width or h<min_height:
-          return (None, 1.0)
+      x,y,w,h=box
 
-        l_s=[(l, self.test_letter(box, gray, l)) for l in letters]
-        return min(l_s, key=lambda x: x[1])
+      if w*h<min_area or w<min_width or h<min_height:
+        return (None, 1.0)
+
+      l_s=[(l, test_letter(box, l)) for l in letters]
+      return min(l_s, key=lambda x: x[1])
 
     letter_ligatures=['8dot', 'dotO', 'dotM', 'dotB', 'dotC', 'dotH', 'dotE', 'dotP']
     @memoize_simple
     def max_score_ligatures(box):
-        x,y,w,h=box
-        if w*h<min_area or w<min_width or h<min_height:
-          return (None, 1.0)
+      x,y,w,h=box
+      if w*h<min_area or w<min_width or h<min_height:
+        return (None, 1.0)
 
-        l_s=[(l, self.test_letter(box, gray, l)) for l in letter_ligatures]
-        return min(l_s, key=lambda x: x[1])
+      l_s=[(l, test_letter(box, l)) for l in letter_ligatures]
+      return min(l_s, key=lambda x: x[1])
 
     boxes=[]
     for th in ths:
@@ -347,37 +379,6 @@ class TaskSVMLetterDetector(Task):
 
     return boxes
 
-  #@memoize_test_letter
-  def test_letter(self, box, gray, letter):
-    svm=self.svm_letters[letter]
-
-    desc=self.compute_hog(box, gray)
-    score_=svm.predict(desc, returnDFVal=True)
-
-    return -score_
-
-  #FIXME this is runtime potential problem
-  @memoize_compute_hog
-  def compute_hog(self, box, gray):
-    X,Y,W,H=box
-    gray=gray[Y-1:Y+H+1, X-1:X+W+1]
-
-    winSize = (20, 30)
-    blockSize = (4,6)
-    blockStride = (2,3)
-    cellSize = (2,3)
-    nbins=9
-
-    winStride = (20,30)
-    padding = (0,0)
-
-    gray=cv2.resize(gray, winSize, interpolation = cv2.INTER_CUBIC)
-
-    hog=cv2.HOGDescriptor(winSize, blockSize,blockStride,cellSize, nbins)
-    desc = hog.compute(gray, winStride, padding, ((0, 0),))
-
-    return desc
-
   def get_positional_boxes(self, th):
     sizes=[(0,25, False),(16,20, False),(27,20, False),(37,20, False), (48,20, False), (59, 20, False), (65,35, True), (85,15, True)]
     boxes=[]
@@ -441,39 +442,35 @@ def get_stats_symbols(plate):
   return alphas, nums, alphanums
 
 def prune_plate(plate, threshold=0.999):
-    changed=True
-    ovlp=[[(overlap(li[1], lj[1])+0.0)/(li[1][2]*li[1][3]) for lj in plate] for li in plate]
+  #plane entries format is (score, box, letter)
+  changed=True
+  ovlp=[[(overlap(li[1], lj[1])+0.0)/(li[1][2]*li[1][3]) for lj in plate] for li in plate]
 
-    while changed:
-      changed=False
-      for j in xrange(len(plate)):
-        if plate[j] is None:
+  while changed:
+    changed=False
+    for j in xrange(len(plate)):
+      if plate[j] is None:
+        continue
+      for i in xrange(j+1, len(plate)):
+        if plate[i] is None:
           continue
-        for i in xrange(len(plate)):
-          if plate[i] is None:
-            continue
 
-          if i==j:
-            continue
+        #drop symbols detected by multiple boxes
+        if plate[i][0]==plate[j][0] and max(ovlp[i][j], ovlp[j][i])> threshold:
+          changed=True
+          if plate[i][2]>plate[j][2]:
+            plate[j]=None
+            break
+          else:
+            plate[i]=None
 
-          if plate[i][0]==plate[j][0] and max(ovlp[i][j], ovlp[j][i])> threshold:
-            if plate[i][2]>plate[j][2]:
-              #drop symbols detected by multiple boxes
-              plate[j]=None
-              break
-            else:
-              plate[i]=None
+  #debug
+  #idx=[i for i in range(len(ovlp)) if plate[i] is not None]
+  #for i in idx:
+  #  for j in idx:
+  #    if i!=j:
+  #      if ovlp[i][j]>0.201 and plate[i][1]==plate[j][1]:
+  #        print "prune_plate", i, j ,plate[i], plate[j], max(ovlp[i][j], ovlp[j][i])
+  #        pass
 
-            changed=True
-
-    idx=[i for i in range(len(ovlp)) if plate[i] is not None]
-
-    #debug
-    #for i in idx:
-    #  for j in idx:
-    #    if i!=j:
-    #      if ovlp[i][j]>0.201 and plate[i][1]==plate[j][1]:
-    #        print "prune_plate", i, j ,plate[i], plate[j], max(ovlp[i][j], ovlp[j][i])
-    #        pass
-
-    return [l for l in plate if l is not None]
+  return [l for l in plate if l is not None]

@@ -5,7 +5,6 @@ from alpr.tasks.zone_transform import *
 from alpr.tasks.horizontal_deskew import thresholded
 import cv2
 import numpy as np
-from alpr.decorators import memoize
 
 class TaskVerticalDeskew(Task):
   def __init__(self, img, parent, box, debug=None):
@@ -91,7 +90,6 @@ def draw_line(img, center, theta, color=(0,0,255)):
   y2 = int(y0-100*sn)
   cv2.line(img, (x1,y1), (x2,y2), color, 2)
 
-#@memoize
 def hough_vertical_angles(img, band=None, n=5, cut=np.pi/3, precision=np.pi/180/4):
   edges = cv2.Canny(img, 50, 150, apertureSize = 3, L2gradient=True)
 

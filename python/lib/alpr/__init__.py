@@ -3,6 +3,7 @@
 import cv2
 import numpy as np
 import os
+import re
 import xml.etree.ElementTree as et
 from alpr.tasks.zone_transform import *
 from alpr.tasks.haar_localization import *
@@ -13,12 +14,10 @@ from alpr.tasks.svm_letter_detector import *
 from alpr.tasks.merge_plate import *
 
 class Engine:
-  def __init__(self, img, name, datadir, crop=None, transform=None):
-    self.img=img
+  def __init__(self, datadir, crop=None, transform=None):
     self.datadir=datadir
     self.crop=crop #has form of tuple of ((y,x),(height, width))
     self.transform=transform #has form of np.mat with shape (2,2)
-    self.name=name
     self.haar_cascade = cv2.CascadeClassifier(os.path.join(datadir,'haarcascade_russian_plate_number.xml'))
     self.hog_descriptor={}
     self.letter_svm={}
@@ -57,8 +56,8 @@ class Engine:
     self.vertical_stage1_svm=cv2.SVM()
     self.vertical_stage1_svm.load(svm_file)
 
-  def detect(self):
-    debug_var={"images": [self.img], "titles": ['orig'], "suffixes": ['']}
+  def detect(self, img, name):
+    debug_var={"images": [img], "titles": ['orig'], "suffixes": ['']}
 
     transformed=None
 
@@ -67,7 +66,7 @@ class Engine:
       debug_var["titles"]+=[name]
       debug_var["suffixes"]+=[name]
 
-    queue=[TaskZoneTransform(self.img, debug, self.crop, self.transform)]
+    queue=[TaskZoneTransform(img, debug, self.crop, self.transform)]
     plates=[]
     while len(queue)>0:
       task=queue.pop(0)
@@ -83,7 +82,7 @@ class Engine:
             debug(result[n].img, 'haar_bad_'+str(n))
           else:
             debug(result[n].img, 'haar_'+str(n))
- 
+
         queue+=[TaskHorizontalDeskew(r.img, transformed, r.box, debug) for r in result[:1]]
       elif isinstance(result, TaskResultHorizontalDeskew):
         r=result
@@ -100,8 +99,8 @@ class Engine:
           winStride = (180,60)
           padding = (0,0)
 
-          img=cv2.resize(r.img, winSize, interpolation = cv2.INTER_CUBIC)
-          gray=cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+          r_img=cv2.resize(r.img, winSize, interpolation = cv2.INTER_CUBIC)
+          gray=cv2.cvtColor(r_img, cv2.COLOR_BGR2GRAY)
           hog=cv2.HOGDescriptor(winSize, blockSize,blockStride,cellSize, nbins)
           desc = hog.compute(gray, winStride, padding, ((0, 0),))
           score_=self.vertical_stage1_svm.predict(desc, returnDFVal=True)
@@ -131,6 +130,6 @@ class Engine:
     #return plates
 
     #for i in xrange(1,len(debug_var["images"])):
-    #    cv2.imwrite(self.name+"_"+debug_var["suffixes"][i]+".jpg",debug_var["images"][i])
+    #    cv2.imwrite(name+"_"+debug_var["suffixes"][i]+".jpg",debug_var["images"][i])
 
     return plates

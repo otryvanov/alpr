@@ -4,7 +4,6 @@ from alpr.tasks.common import *
 from alpr.tasks.zone_transform import *
 import cv2
 import numpy as np
-from alpr.decorators import memoize
 
 class TaskHorizontalDeskew(Task):
   def __init__(self, img, parent, box, debug=None):
@@ -46,7 +45,6 @@ class TaskResultHorizontalDeskew(TaskResult):
     self.box=box
     self.h_angle=h_angle
 
-@memoize
 def hough_horizontal_angles(img, band=None, n=3, cut=np.pi/12, precision=np.pi/180):
   edges = cv2.Canny(img, 50, 150, apertureSize = 3, L2gradient=True)
 

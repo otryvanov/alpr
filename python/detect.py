@@ -39,6 +39,6 @@ datadir=os.path.dirname(os.path.abspath(__file__))
 datadir=os.path.join(datadir, 'data')
 name=img_name.replace('.jpg','')
 
-engine=alpr.Engine(img, name, datadir, crop, transform)
-print " ".join(engine.detect())
+engine=alpr.Engine(datadir, crop, transform)
+print " ".join(engine.detect(img, name))
 sys.stdout.flush()
