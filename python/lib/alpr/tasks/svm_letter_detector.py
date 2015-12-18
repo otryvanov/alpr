@@ -18,35 +18,6 @@ class TaskSVMLetterDetector(Task):
         pass
       self.debug=debug
 
-    self.search_confusion_map={
-      '0O': ['6', '9'],
-      '1': ['M', 'K'],
-      '2': ['4'],
-      '3': [],
-      '4': ['2'],
-      '5': [],
-      '6': [],
-      '7': [],
-      '8': ['B', 'A'],
-      '8B': ['8', 'B'],
-      '9': [],
-      'A': ['8'],
-      'B': [],
-      'C': ['E', '8', '8B', 'B'],
-      'E': [],
-      'H': ['M'],
-      'K': ['1'],
-      'M': ['H', '1'],
-      'P': [],
-      'T': [],
-      'X': [],
-      'Y': [],
-      'HM': ['M', 'H']
-    }
-
-    self.search_order=['7','9','1','8','0O','8B','HM','2','3','4','5','6','A','B','C','E','H','K','M','P','T','X','Y']
-    self.search_yscales=[1.0, 1.2]
-
   def execute(self):
     img=self.img
 
@@ -133,7 +104,7 @@ class TaskSVMLetterDetector(Task):
 
     #functions defined as closures to avoid passing multiple and/or complex arguments
     #which allows memoize_simple use and autoresets after execute comletion
-    @memoize_simple
+
     def compute_hog(box):
       X,Y,W,H=box
       gray_=gray[Y-1:Y+H+1, X-1:X+W+1] #FIXME should check area bounds
@@ -154,14 +125,6 @@ class TaskSVMLetterDetector(Task):
 
       return desc
 
-    def test_letter(box, letter):
-      svm=self.svm_letters[letter]
-
-      desc=compute_hog(box)
-      score_=svm.predict(desc, returnDFVal=True)
-
-      return -score_
-
     letters=['1','2','3','4','5','6','7','8','9','0O','A','B','C','E','H','K','M','P','T','X','Y']
     @memoize_simple
     def max_score(box):
@@ -170,7 +133,10 @@ class TaskSVMLetterDetector(Task):
       if w*h<min_area or w<min_width or h<min_height:
         return (None, 1.0)
 
-      l_s=[(l, test_letter(box, l)) for l in letters]
+      desc=compute_hog(box)
+
+      l_s=[(l, -self.svm_letters[l].predict(desc, returnDFVal=True)) for l in letters]
+
       return min(l_s, key=lambda x: x[1])
 
     letter_ligatures=['8dot', 'dotO', 'dotM', 'dotB', 'dotC', 'dotH', 'dotE', 'dotP']
@@ -180,7 +146,9 @@ class TaskSVMLetterDetector(Task):
       if w*h<min_area or w<min_width or h<min_height:
         return (None, 1.0)
 
-      l_s=[(l, test_letter(box, l)) for l in letter_ligatures]
+      desc=compute_hog(box)
+
+      l_s=[(l, -self.svm_letters[l].predict(desc, returnDFVal=True)) for l in letter_ligatures]
       return min(l_s, key=lambda x: x[1])
 
     h1_candidates=[10,5]
@@ -226,6 +194,10 @@ class TaskSVMLetterDetector(Task):
 
       return min_score, min_letter, min_box
 
+    #replacing original compute_hog with memoized version
+    #will be restored after ligatures detection
+    compute_hog_raw=compute_hog
+    compute_hog=memoize_simple(compute_hog)
 
     boxes=[]
     for th in ths:
@@ -323,6 +295,9 @@ class TaskSVMLetterDetector(Task):
 
       if s>0:
         self.debug(b_img, "svm1_nf_"+str(m))
+
+    #restore original compute_hog
+    compute_hog_raw=compute_hog_raw
 
     #prune plate, distructive to original
     plate=prune_plate(plate, threshold=0.799) #distructive

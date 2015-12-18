@@ -13,17 +13,6 @@ def memoize(obj):
     return cache[key]
   return memoizer
 
-def memoize_compute_hog(obj):
-  cache = obj.cache = {}
-
-  @functools.wraps(obj)
-  def memoizer(*args, **kwargs):
-    key = str(args[1])
-    if key not in cache:
-      cache[key] = obj(*args, **kwargs)
-    return cache[key]
-  return memoizer
-
 def memoize_simple(f):
   class memodict(dict):
     def __missing__(self, key):
