@@ -4,7 +4,6 @@ from alpr.decorators import memoize
 import itertools
 
 #calculates area overlap of two boxes (format (x,y,w,h)
-@memoize
 def overlap(box1, box2):
   #box consist of x,y,w,h
   x_overlap = max(0, min(box1[0]+box1[2],box2[0]+box2[2]) - max(box1[0],box2[0]))

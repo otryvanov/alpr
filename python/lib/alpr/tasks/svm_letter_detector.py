@@ -414,7 +414,11 @@ def get_stats_symbols(plate):
 def prune_plate(plate, threshold=0.999):
   #plane entries format is (score, box, letter)
   changed=True
-  ovlp=[[(overlap(li[1], lj[1])+0.0)/(li[1][2]*li[1][3]) for lj in plate] for li in plate]
+
+  #manually inlined overlap
+  ovlp=[[float(max(0, min(li[1][0]+li[1][2],lj[1][0]+lj[1][2]) - max(li[1][0],lj[1][0]))*
+               max(0, min(li[1][1]+li[1][3],lj[1][1]+lj[1][3]) - max(li[1][1],lj[1][1]))
+              )/(li[1][2]*li[1][3]) for lj in plate] for li in plate]
 
   while changed:
     changed=False
