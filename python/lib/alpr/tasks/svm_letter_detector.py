@@ -183,6 +183,50 @@ class TaskSVMLetterDetector(Task):
       l_s=[(l, test_letter(box, l)) for l in letter_ligatures]
       return min(l_s, key=lambda x: x[1])
 
+    h1_candidates=[10,5]
+    h2_candidates=[16,22]
+
+    @memoize_simple
+    def max_score_vsplit(box):
+      x,y,w,h=box
+      l_s=[]
+      min_score=1.0
+      min_letter=None
+      min_box=(x,y,w,h)
+
+      for h1 in h1_candidates:
+        for h2 in h2_candidates:
+          l,s=max_score((x,h1,w,h2))
+          s=s*h2/(h+0.0)
+          if s<min_score:
+            min_score=s
+            min_letter=l
+            min_box=(x,h1,w,h2)
+
+      return min_letter, min_score, min_box
+
+    def max_score_hsplit3(box):
+      x,y,w,h=box
+
+      min_score=1.0
+      min_letter=None
+      min_box=(x,y,w,h)
+
+      for w1 in xrange(0,min(w-min_width,10)):
+
+        for w2 in xrange(min_width, min(w-w1,16)):
+          b_=(x+w1,y,w2,h)
+
+          l,s,b=max_score_vsplit(b_)
+          s=s/(w+0)*w2
+          if s<min_score:
+            min_score=s
+            min_letter=l
+            min_box=b
+
+      return min_score, min_letter, min_box
+
+
     boxes=[]
     for th in ths:
       boxes+=self.get_boxes_from_contour(th, gray)
@@ -253,11 +297,14 @@ class TaskSVMLetterDetector(Task):
       else:
         boxes_left+=[(X,Y,W,H,m,min_letter,min_score,b_img)]
 
+    #prune plate, distructive to origianl
+    plate=prune_plate(plate, threshold=0.799)
+
     #are we done?
     #RUSSIAN PLATE TYPE1 SPECIFIC
-    #alphas, nums, alphanums=get_stats_symbols(plate)
-    #if alphanums>=9:
-    #  return TaskResultSVMLetterDetector(plate)
+    alphas, nums, alphanums=get_stats_symbols(plate)
+    if alphanums>=9:
+      return TaskResultSVMLetterDetector(plate)
 
     #search by splitting
     boxes=boxes_left
@@ -279,76 +326,40 @@ class TaskSVMLetterDetector(Task):
 
     #prune plate, distructive to original
     plate=prune_plate(plate, threshold=0.799) #distructive
+    #plate=sorted(plate, key=lambda x: x[1][0]+x[1][2]/2.0)
 
-    m=200
-    for box in get_positional_boxes(gray, plate):
-      m+=1
-      X,Y,W,H, deep = box
-      if W<min_width:
+    #'bruteforce' search
+    hranges=[(r[0], r[1]-r[0]+1) for r in get_free_hranges(gray, plate, 2)]
+    h1_cnds=list(set([l[1][1] for l in plate]))
+    h2_cnds=list(set([l[1][3] for l in plate]))
+
+    if len(h1_cnds)>2:
+      h1_candidates=h1_cnds
+    if len(h2_cnds)>2:
+      h2_candidates=h2_cnds
+
+    ws=[l[1][2] for l in plate]
+    min_width=max(min_width, int(np.floor(min(ws)*0.75)))
+    max_width=20
+
+    for r in hranges:
+      x,w=r
+      if w<min_width:
         continue
-      b_img=gray[Y:Y+H,X:X+W]
+      if x==0:
+        x+=1
+      if x+w==gray.shape[1]:
+        w-=1
 
-      fscale=2
-      if (X+W/2.0)>img.shape[1]*0.5:
-        fscale=2
-      if (X+W/2.0)>img.shape[1]*0.75:
-        fscale=3
-      fscale=30.0*fscale/img.shape[0]
-      b_img=cv2.resize(b_img, (0,0), fx=fscale, fy=fscale)
-      Yf=int(Y*fscale)
-      Xf=int(X*fscale)
-      Wf=int(W*fscale)
-      Hf=int(H*fscale)
+      scores=[max_score_hsplit3((x+i, 0, min(w-i,max_width), gray.shape[0])) for i in xrange(0,w-min_width,3)]
+      for s in [s for s in scores if s[0]<0.0]:
+        min_letter, min_score=max_score(s[2])
+        b_img=gray[s[2][1]-1:s[2][1]+s[2][3]+1, s[2][0]-1:s[2][0]+s[2][2]+1]
 
-      if Wf<20 or Hf<30:
-        continue
+        self.debug(b_img, "svm1_fbf_"+min_letter+"_"+str(s[2]))
+        plate+=[(min_letter, s[2], -min_score)]
 
-      self.debug(b_img, "svm2_"+str(m))
-
-      search_yscales=self.search_yscales
-      search_list=copy.copy(self.search_order)
-      search_confusion=False
-
-      Found=False
-
-      while len(search_list)>0:
-        letter=search_list.pop(0)
-
-        for yscale in search_yscales:
-          b_img_=cv2.resize(b_img, (0,0), fx=1.0, fy=yscale) # rescale in case a plate contains subline
-
-          found, F=self.hog_descriptor[letter].detectMultiScale(b_img_, 1.05)
-          n=0
-          for j in xrange(len(found)):
-            Found=True
-            x,y,w,h=found[j]
-            f=F[j][0]
-
-            b_imgl=b_img_[y:y+h,x:x+w]
-
-            if np.abs(yscale-1.0)<0.001:
-              self.debug(b_imgl, "svm2_f_"+letter+"_"+str(m)+"_"+str(n))
-            else:
-              self.debug(b_imgl, "svm2_fs_"+letter+"_"+str(m)+"_"+str(n))
-
-            n+=1
-
-            Xn=X+x/fscale
-            Yn=Y+y/fscale/yscale
-            Wn=w/fscale
-            Hn=h/fscale/yscale
-            plate+=[(letter, (Xn,Yn,Wn,Hn), f)]
-
-          if len(found)>0 and not search_confusion and not deep:
-            search_confusion=True
-            search_list=copy.copy(self.search_confusion_map[letter])
-            continue
-
-        deep=True
-        if Found and not search_confusion and not deep:
-          if yscale!=search_yscales[0]:
-            self.search_yscales=[yscale, search_yscales[0]]
-          break
+    plate=prune_plate(plate, threshold=0.799) #distructive
 
     return TaskResultSVMLetterDetector(plate)
 
@@ -376,18 +387,6 @@ class TaskSVMLetterDetector(Task):
         continue
 
       boxes+=[(X,Y,W,H)]
-
-    return boxes
-
-  def get_positional_boxes(self, th):
-    sizes=[(0,25, False),(16,20, False),(27,20, False),(37,20, False), (48,20, False), (59, 20, False), (65,35, True), (85,15, True)]
-    boxes=[]
-    for X, W, deep in sizes:
-      X=int((th.shape[1]-1)*X/100.0)
-      W=int((th.shape[1]-1)*W/100.0)
-      Y=0
-      H=th.shape[0]-1
-      boxes+=[(X,Y,W,H, True, None)]
 
     return boxes
 
@@ -427,10 +426,6 @@ def get_free_hranges(gray, plate, pad=3):
   rgs=[r for r in ranges(h_gaps) if (r[1]-r[0]>5)] #min_width, REFACTOR
 
   return rgs
-
-def get_positional_boxes(gray, plate):
-
-    return [(r[0],0,r[1]-r[0],gray.shape[0], True) for r in get_free_hranges(gray, plate)]
 
 def get_stats_symbols(plate):
   letters=[l[0] for l in plate]
