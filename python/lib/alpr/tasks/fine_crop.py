@@ -61,10 +61,11 @@ class TaskFineCrop(Task):
     #FIXME this makes more sense than previous line but does not work
     #hl=hl<127
 
+    limit_h=0.4
     min_y=[n for n in xrange(2,len(hl)-2) if hl[n] and hl[n+1] and not hl[n-1]]
     max_y=[n for n in xrange(len(hl)-3, 2,-1) if hl[n] and hl[n-1] and not hl[n+1]]
-    min_y=[n for n in min_y if n<img.shape[0]*0.6]
-    max_y=[n for n in max_y if n>img.shape[0]*0.4]
+    min_y=[n for n in min_y if n<img.shape[0]*limit_h]
+    max_y=[n for n in max_y if n>img.shape[0]*(1-limit_h)]
 
     min_height=14
     splits=sorted([(j-i, i, j) for i in min_y+[1] for j in max_y+[len(hl)-2] if (j-i>min_height)])
@@ -98,10 +99,11 @@ class TaskFineCrop(Task):
     vl=vl/np.max(vl)*255
     vl=vl<np.mean(vl)+np.std(vl)
 
+    limit_v=0.3
     min_x=[n for n in xrange(2,len(vl)-2) if vl[n] and vl[n+1] and not vl[n-1]]
     max_x=[n for n in xrange(len(vl)-3, 2,-1) if vl[n] and vl[n-1] and not vl[n+1]]
-    min_x=[n for n in min_x if n<img.shape[1]*0.7]
-    max_x=[n for n in max_x if n>img.shape[1]*0.3]
+    min_x=[n for n in min_x if n<img.shape[1]*limit_v and n> img.shape[1]*0.1]
+    max_x=[n for n in max_x if n>img.shape[1]*(1-limit_v) and n< img.shape[1]*0.9]
 
     min_length=expected_length*0.5 #magic number, volatile, should move to params
     max_length=expected_length*1.5

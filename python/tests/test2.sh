@@ -1,0 +1,1 @@
+cat test2.lst | grep -Eo '.*jpg' | xargs -P 1 -n 1 bash -c 'echo -n $0 ""; python detect.py test2/$0'

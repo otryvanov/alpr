@@ -122,9 +122,12 @@ def vertical_angles_from_edges(gray):
   map(thetas.extend, thetas_b)
   thetas=np.array(thetas).flatten()
 
+  if len(thetas)==0:
+    return []
+
   #probably should whiten thetas
   #4 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
-  n_cl=4
+  n_cl=min(4, len(thetas))
 
   thetas=np.float32(thetas)
   criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 0.001)
@@ -165,9 +168,12 @@ def vertical_angles_from_contours(img):
   map(thetas.extend, thetas_b)
   thetas=np.array(thetas).flatten()
 
+  if len(thetas)==0:
+    return []
+
   #probably should whiten thetas
   #4 clusters chosen because in general they corresponds to vertical and almost vertical lines in symbols
-  n_cl=4
+  n_cl=min(4, len(thetas))
 
   thetas=np.float32(thetas)
   criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 0.001)
@@ -199,6 +205,9 @@ def vertical_angles(img):
 
   thetas1_=[np.median(c) for c in thetas1]
   thetas2_=[np.median(c) for c in thetas2]
+
+  if len(thetas1_)==0:
+    return sorted(thetas2_, reverse=False, key=lambda x: np.abs(x))
 
   #get consistent angles
   th=[]

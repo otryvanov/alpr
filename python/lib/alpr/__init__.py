@@ -19,7 +19,6 @@ class Engine:
     self.crop=crop #has form of tuple of ((y,x),(height, width))
     self.transform=transform #has form of np.mat with shape (2,2)
     self.haar_cascade = cv2.CascadeClassifier(os.path.join(datadir,'haarcascade_russian_plate_number.xml'))
-    self.hog_descriptor={}
     self.letter_svm={}
 
     winSize = (20, 30)
@@ -31,19 +30,7 @@ class Engine:
     winStride = (20,30)
     padding = (0,0)
 
-    for letter in ['HM','0O','1','2','3','4','5','6','7','8','8B','9','A','B','C','E','H','K','M','P','T','X','Y']:
-      self.hog_descriptor[letter]=cv2.HOGDescriptor(winSize, blockSize, blockStride, cellSize, nbins)
-
-      svm_file=os.path.join(datadir,'svm_letter_'+letter+'.xml')
-      tree = et.parse(svm_file)
-      root = tree.getroot()
-      # nasty hacks not described in any docs
-      svs = root.getchildren()[0].getchildren()[-2].getchildren()[0]
-      rho = float( root.getchildren()[0].getchildren()[-1].getchildren()[0].getchildren()[1].text )
-      svmvec = [float(x) for x in re.sub( '\s+', ' ', svs.text ).strip().split(' ')]+[-rho]
-      self.hog_descriptor[letter].setSVMDetector(np.array(svmvec))
-
-    for letter in ['HM','0O','1','2','3','4','5','6','7','8','8B','9','A','B','C','E','H','K','M','P','T','X','Y','8dot', 'dotH', 'dotM', 'dotO', 'dotE', 'dotC', 'dotP', 'dotB']:
+    for letter in ['0O','1','2','3','4','5','6','7','8','9','A','B','C','E','H','K','M','P','T','X','Y','8dot', 'dotH', 'dotM', 'dotO', 'dotE', 'dotC', 'dotP', 'dotB']:
       svm_file=os.path.join(datadir,'svm_letter_'+letter+'_stage_1.xml')
       self.letter_svm[letter]=cv2.SVM()
       self.letter_svm[letter].load(svm_file)
@@ -112,7 +99,7 @@ class Engine:
           n+=1
           queue+=[TaskFineCrop(rotated_img, debug)]
       elif isinstance(result, list) and len(result)>0 and isinstance(result[0], TaskResultFineCrop):
-        queue+=[TaskSVMLetterDetector(r.img, self.hog_descriptor, self.letter_svm, debug) for r in result]
+        queue+=[TaskSVMLetterDetector(r.img, self.letter_svm, debug) for r in result]
       elif isinstance(result, TaskResultSVMLetterDetector):
         queue+=[TaskMergePlate([result.localization])]
       elif isinstance(result, TaskResultMergePlate):

@@ -8,9 +8,8 @@ from alpr.decorators import *
 from alpr.utils import *
 
 class TaskSVMLetterDetector(Task):
-  def __init__(self, img, hog_descriptor, svm_letters, debug=None):
+  def __init__(self, img, svm_letters, debug=None):
     self.img=img
-    self.hog_descriptor=hog_descriptor
     self.svm_letters=svm_letters
     self.debug=debug
     if debug is None:
@@ -314,7 +313,8 @@ class TaskSVMLetterDetector(Task):
       h2_candidates=h2_cnds
 
     ws=[l[1][2] for l in plate]
-    min_width=max(min_width, int(np.floor(min(ws)*0.75)))
+    if ws:
+       min_width=max(min_width, int(np.floor(min(ws)*0.75)))
     max_width=20
 
     for r in hranges:
