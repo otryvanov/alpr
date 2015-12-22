@@ -26,10 +26,11 @@ class TaskSVMLetterDetector(Task):
     gray_c = clahe.apply(gray)
 
     #guess 'white' color
+    epsilon=0.0001
     white=np.median(gray)
-    white=np.mean(gray[gray>white])
+    white=np.mean(gray[gray>white-epsilon])
     white_c=np.median(gray_c)
-    white_c=np.mean(gray_c[gray_c>white_c])
+    white_c=np.mean(gray_c[gray_c>white_c-epsilon])
 
     window=21
     #adaptive mean

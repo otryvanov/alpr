@@ -103,11 +103,23 @@ def horizontal_angle_from_edges(gray, cut=np.pi/12, precision=np.pi/180):
   theta_avg=np.median(thetas) #check median vs mean
   theta_std=np.std(thetas)
 
-  while theta_std>np.pi/180:
+  epsilon=0.00001
+  changed=True
+  while changed:
+    changed=False
+
     #filter out uncommon values
-    thetas=thetas[np.abs(thetas-theta_avg)<=theta_std+0.00001]
-    theta_avg=np.median(thetas) #check median vs mean
-    theta_std=np.std(thetas)
+    thetas=thetas[np.abs(thetas-theta_avg)<=theta_std+epsilon]
+    theta_avg_new=np.median(thetas) #check median vs mean
+    theta_std_new=np.std(thetas)
+
+    if np.abs(theta_avg_new-theta_avg)>epsilon or np.abs(theta_std_new-theta_std)>epsilon:
+      theta_avg=theta_avg_new
+      theta_std=theta_std_new
+      changed=True
+
+    if theta_std<np.pi/180:
+      break
 
   theta=np.mean(thetas) #check median vs mean
   return theta

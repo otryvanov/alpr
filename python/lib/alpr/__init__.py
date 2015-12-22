@@ -21,19 +21,18 @@ class Engine:
     self.haar_cascade = cv2.CascadeClassifier(os.path.join(datadir,'haarcascade_russian_plate_number.xml'))
     self.letter_svm={}
 
-    winSize = (20, 30)
-    blockSize = (4,6)
-    blockStride = (2,3)
-    cellSize = (2,3)
-    nbins=9
-
-    winStride = (20,30)
-    padding = (0,0)
-
     for letter in ['0O','1','2','3','4','5','6','7','8','9','A','B','C','E','H','K','M','P','T','X','Y','8dot', 'dotH', 'dotM', 'dotO', 'dotE', 'dotC', 'dotP', 'dotB']:
       svm_file=os.path.join(datadir,'svm_letter_'+letter+'_stage_1.xml')
       self.letter_svm[letter]=cv2.SVM()
       self.letter_svm[letter].load(svm_file)
+
+    svm_file=os.path.join(datadir,'svm_left_border.xml')
+    self.left_border=cv2.SVM()
+    self.left_border.load(svm_file)
+
+    svm_file=os.path.join(datadir,'svm_right_border.xml')
+    self.right_border=cv2.SVM()
+    self.right_border.load(svm_file)
 
     svm_file=os.path.join(datadir,'svm_plate.xml')
     self.plate_svm=cv2.SVM()
@@ -64,7 +63,6 @@ class Engine:
         queue+=[TaskHaarLocalization(result.img, self.haar_cascade, self.plate_svm, 0.1, debug)]
       elif isinstance(result, list) and len(result)>0 and isinstance(result[0], TaskResultHaarLocalization):
         for n in xrange(len(result[:1])):
-          #print result[n].score
           if result[n].score>0:
             debug(result[n].img, 'haar_bad_'+str(n))
           else:
@@ -97,9 +95,9 @@ class Engine:
         for score_,rotated_img in sorted(r_imgs, key=lambda x: x[0])[:1]:
           debug(rotated_img, 'lpv2_'+str(n))
           n+=1
-          queue+=[TaskFineCrop(rotated_img, debug)]
+          queue+=[TaskFineCrop(rotated_img, self.left_border, self.right_border, debug)]
       elif isinstance(result, list) and len(result)>0 and isinstance(result[0], TaskResultFineCrop):
-        queue+=[TaskSVMLetterDetector(r.img, self.letter_svm, debug) for r in result]
+        queue+=[TaskSVMLetterDetector(r.img, self.letter_svm, debug) for r in result[:1]]
       elif isinstance(result, TaskResultSVMLetterDetector):
         queue+=[TaskMergePlate([result.localization])]
       elif isinstance(result, TaskResultMergePlate):

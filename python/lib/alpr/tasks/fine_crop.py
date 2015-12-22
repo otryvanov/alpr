@@ -6,9 +6,11 @@ import cv2
 import numpy as np
 
 class TaskFineCrop(Task):
-  def __init__(self, img, debug=None):
+  def __init__(self, img, left_border, right_border, debug=None):
     self.img=img
     self.debug=debug
+    self.left_border=left_border
+    self.right_border=right_border
     if debug is None:
       def debug(img, name):
         pass
@@ -115,8 +117,62 @@ class TaskFineCrop(Task):
       max_x+=[len(vl)-2]
 
     splits=[(j-i, i, j) for i in min_x for j in max_x if (j-i>min_length) and (j-i< max_length)]
-    splits=sorted(splits)
+
+    min_x=list(set([s[1] for s in splits]))
+    max_x=list(set([s[2] for s in splits]))
+
+    winSize = (20, 30)
+    blockSize = (4,6)
+    blockStride = (2,3)
+    cellSize = (2,3)
+    nbins=9
+
+    winStride = (20,30)
+    padding = (0,0)
+
+    gray_padding=int(gray.shape[0]/3.0)
+    gray_=cv2.copyMakeBorder(gray, 0, 0, gray_padding, gray_padding, cv2.BORDER_REPLICATE)
+
+    min_x_score={}
+
+    for i in min_x:
+      box=(int(i+gray_padding-gray.shape[0]/6.0),0,int(gray.shape[0]/3.0),gray.shape[0])
+      sim=gray_[box[1]:box[1]+box[3], box[0]:box[0]+box[2]]
+      sim=cv2.resize(sim, winSize, interpolation = cv2.INTER_CUBIC)
+
+      hog=cv2.HOGDescriptor(winSize, blockSize,blockStride,cellSize, nbins)
+      desc = hog.compute(sim, winStride, padding, ((0, 0),))
+
+      score=self.left_border.predict(desc, returnDFVal=True)
+      min_x_score[i]=(score, sim)
+
+    max_x_score={}
+    for j in max_x:
+      box=(int(j+gray_padding-gray.shape[0]/6.0),0,int(gray.shape[0]/3.0)+3,gray.shape[0])
+      sim=gray_[box[1]:box[1]+box[3], box[0]:box[0]+box[2]]
+      sim=cv2.resize(sim, winSize, interpolation = cv2.INTER_CUBIC)
+
+      hog=cv2.HOGDescriptor(winSize, blockSize,blockStride,cellSize, nbins)
+      desc = hog.compute(sim, winStride, padding, ((0, 0),))
+
+      score=self.right_border.predict(desc, returnDFVal=True)
+      max_x_score[j]=(score, sim)
+
+    splits=sorted(splits, key=lambda x: min_x_score[x[1]][0]+max_x_score[x[2]][0], reverse=True)
     splits=splits[:1]
+
+    if len(splits)>0:
+      spt, i, j= splits[0]
+
+      if min_x_score[i][0]>0:
+        self.debug(min_x_score[i][1], "left_b_good_"+str(i))
+      else:
+        self.debug(min_x_score[i][1], "left_b_bad_"+str(i))
+
+      if max_x_score[j][0]>0:
+        self.debug(max_x_score[j][1], "right_b_good_"+str(j))
+      else:
+        self.debug(max_x_score[j][1], "right_b_bad_"+str(j))
 
     self.debug(th, "af_hb_th")
     self.debug(img_, "af_hb_im")
