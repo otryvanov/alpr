@@ -58,6 +58,9 @@ class TaskFineCrop(Task):
     img_ = cv2.erode(img_, h_kernel, iterations = 1)
 
     hl=np.mean(255-img_, 1)
+    if max(hl)==0:
+      #FIXME we probably hit opencv bug
+      return [(gray.shape[0]-2, 1, gray.shape[1]-1)]
     hl=hl/np.max(hl)*255
     hl=hl<np.mean(hl)+np.std(hl)
     #FIXME this makes more sense than previous line but does not work
@@ -74,6 +77,9 @@ class TaskFineCrop(Task):
 
     self.debug(th, "af_vb_th")
     self.debug(img_, "af_vb_im")
+
+    if len(splits)==0:
+      return [(gray.shape[0]-2, 1, gray.shape[1]-1)]
 
     return splits
 
@@ -98,6 +104,9 @@ class TaskFineCrop(Task):
     img_ = cv2.erode(img_, v_kernel, iterations = 1)
 
     vl=np.mean(255-img_, 0)
+    if max(vl)==0:
+      #FIXME we probably hit opencv bug
+      return [(gray.shape[1]-3, 1, gray.shape[1]-2)]
     vl=vl/np.max(vl)*255
     vl=vl<np.mean(vl)+np.std(vl)
 

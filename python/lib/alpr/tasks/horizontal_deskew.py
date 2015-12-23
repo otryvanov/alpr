@@ -32,18 +32,20 @@ class TaskHorizontalDeskew(Task):
       self.debug(ths[k], 'lph0th'+str(k))
 
     #get single horizontal bias and transform img
-    h_angle=np.pi/2-horizontal_angle_from_edges(gray, np.pi/12, np.pi/180)
+    h_angle, state=horizontal_angle_from_edges(gray, np.pi/12, np.pi/180)
+    h_angle=np.pi/2-h_angle
     d_parent, d_img = deskew_from_parent(self.parent, crop, h_angle)
     self.debug(d_img, 'lph1')
 
-    return TaskResultHorizontalDeskew(d_img, d_parent, self.box, h_angle)
+    return TaskResultHorizontalDeskew(d_img, d_parent, self.box, h_angle, state)
 
 class TaskResultHorizontalDeskew(TaskResult):
-  def __init__(self, img, parent, box, h_angle):
+  def __init__(self, img, parent, box, h_angle, state):
     self.img=img
     self.parent=parent
     self.box=box
     self.h_angle=h_angle
+    self.state=state
 
 def hough_horizontal_angles(img, band=None, n=3, cut=np.pi/12, precision=np.pi/180):
   edges = cv2.Canny(img, 50, 150, apertureSize = 3, L2gradient=True)
@@ -100,6 +102,9 @@ def horizontal_angle_from_edges(gray, cut=np.pi/12, precision=np.pi/180):
   map(thetas.extend, thetas_b)
   thetas=np.array(thetas).flatten()
 
+  if len(thetas)==0:
+    return 0.0, False
+
   theta_avg=np.median(thetas) #check median vs mean
   theta_std=np.std(thetas)
 
@@ -122,7 +127,7 @@ def horizontal_angle_from_edges(gray, cut=np.pi/12, precision=np.pi/180):
       break
 
   theta=np.mean(thetas) #check median vs mean
-  return theta
+  return theta, True
 
 def deskew_from_parent(img, crop, h_angle):
   transform=np.mat([[1, 0], [np.tan(-h_angle), 1]])

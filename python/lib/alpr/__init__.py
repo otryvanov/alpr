@@ -71,10 +71,14 @@ class Engine:
         queue+=[TaskHorizontalDeskew(r.img, transformed, r.box, debug) for r in result[:1]]
       elif isinstance(result, TaskResultHorizontalDeskew):
         r=result
-        queue+=[TaskVerticalDeskew(r.img, r.parent, r.box, debug)]
+        if r.state:
+          queue+=[TaskVerticalDeskew(r.img, r.parent, r.box, debug)]
       elif isinstance(result, list) and len(result)>0 and isinstance(result[0], TaskResultVerticalDeskew):
         r_imgs=[]
         for r in result:
+          if not r.state:
+            continue
+
           winSize = (180, 60)
           blockSize = (12,12)
           blockStride = (12,12)

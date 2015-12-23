@@ -40,11 +40,12 @@ class TaskVerticalDeskew(Task):
     result=[]
 
     #get multiple possible vertical biases
-    v_angles=[-np.median(angles)+np.pi/2 for angles in vertical_angles(gray)]
+    v_angles, state=vertical_angles(gray)
+    v_angles=[-np.median(angles)+np.pi/2 for angles in v_angles]
     for v_angle in v_angles:
       d_parent, d_img = deskew_from_parent(self.parent, crop, v_angle)
       self.debug(d_img, 'lpv1')
-      result+=[TaskResultVerticalDeskew(d_img, d_parent, self.box, v_angle)]
+      result+=[TaskResultVerticalDeskew(d_img, d_parent, self.box, v_angle, state)]
 
     #debug info
     img_=img_c.copy()
@@ -66,11 +67,12 @@ class TaskVerticalDeskew(Task):
     return result
 
 class TaskResultVerticalDeskew(TaskResult):
-  def __init__(self, img, parent, box, v_angle):
+  def __init__(self, img, parent, box, v_angle, state):
     self.img=img
     self.parent=parent
     self.box=box
     self.v_angle=v_angle
+    self.state=state
 
 def deskew_from_parent(img, crop, v_angle):
   v_angle=np.pi-v_angle
@@ -207,7 +209,7 @@ def vertical_angles(img):
   thetas2_=[np.median(c) for c in thetas2]
 
   if len(thetas1_)==0:
-    return sorted(thetas2_, reverse=False, key=lambda x: np.abs(x))
+    return sorted(thetas2_, reverse=False, key=lambda x: np.abs(x)), False
 
   #get consistent angles
   th=[]
@@ -217,11 +219,11 @@ def vertical_angles(img):
 
   #commented for test
   if len(th)==1:
-    return [th[0]]
+    return [th[0]], True
   elif len(th)>1:
-    return sorted(th, reverse=False, key=lambda x: np.abs(x)) #FIXME should replace with sensible bias
+    return sorted(th, reverse=False, key=lambda x: np.abs(x)), True #FIXME should replace with sensible bias
   else:
-    return sorted(thetas2_, reverse=False, key=lambda x: np.abs(x))
+    return sorted(thetas2_, reverse=False, key=lambda x: np.abs(x)), True
 
 def big_enough_contours(img):
   big_size=img.shape[0]*img.shape[1]/20 #magic number
