@@ -272,6 +272,22 @@ class TaskSVMLetterDetector(Task):
     #prune plate, distructive to origianl
     plate=prune_plate(plate, threshold=0.799)
 
+    #replace score if ligaturazed version if better
+    #FIXME maybe just recrop?
+    for i in xrange(len(plate)):
+      letter, box, score = plate[i]
+      X,Y,W,H = box
+      if letter in ['8', 'O0', 'M', 'B', 'C', 'H', 'E', 'P']:
+        if letter=='8':
+          ligature='8dot'
+        elif letter=='0O':
+          ligature='dotO'
+        else:
+          ligature='dot'+letter
+        desc=compute_hog(box)
+        score=max(score, self.svm_letters[ligature].predict(desc, returnDFVal=True))
+        plate[i]=(letter, (X,Y,W,H), score)
+
     #are we done?
     #RUSSIAN PLATE TYPE1 SPECIFIC
     alphas, nums, alphanums=get_stats_symbols(plate)
