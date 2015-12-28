@@ -8,6 +8,17 @@ import ConfigParser
 import sys
 import Queue, threading#, Thread, Lock
 
+def fail(message, code=None):
+  print 'fail'
+  print >> sys.stderr, message
+  if code is not None:
+    try:
+      code=int(code)
+    except:
+      code=1
+    finally:
+      sys.exit(code)
+
 if len(sys.argv)>1:
   config=sys.argv[1]
 else:
@@ -15,59 +26,131 @@ else:
   config=os.path.join(config, 'autonum.cfg')
 
 if not os.path.isfile(config):
-  raise IOError("Configuration file %s does not exists" % config)
+  fail("Configuration file %s does not exists" % config, -1)
 
-Config = ConfigParser.ConfigParser()
-Config.read(config)
+try:
+  Config = ConfigParser.ConfigParser()
+  Config.read(config)
+except:
+  fail('Could not parse config file', -1)
 
 if 'Capture' not in Config.sections():
-  raise LookupError('Capture session missing in config')
+  fail('Capture session missing in config', -1)
 
 for key in ['url']:
   if key not in Config.options('Capture'):
-    raise LookupError('Key "%s" is missing in Capture session of config' % key)
+    fail('Key "%s" is missing in Capture session of config' % key, -1)
+
+if 'frame_rate' in Config.options('Capture'):
+  try:
+    frame_rate=int(Config.get('Capture', 'frame_rate'))
+  except Exception:
+    fail('Key "frame_rate" is used in Capture session of config but not integer', -1)
+else:
+  frame_rate=None
+
+if 'retry_timeout' in Config.options('Capture'):
+  try:
+    retry_timeout=int(Config.get('Capture', 'retry_timeout'))
+  except Exception:
+    fail('Key "retry_timeout" is used in Capture session of config but not integer', -1)
+else:
+  retry_timeout=None
 
 if 'Transform' not in Config.sections():
-  raise LookupError('Transform session missing in config')
+  fail('Transform session missing in config', -1)
 
 for key in ['crop_x', 'crop_y', 'crop_width', 'crop_height']:
   if key not in Config.options('Transform'):
-    raise LookupError('Key "%s" is missing in Transform session of config' % key)
+    fail('Key "%s" is missing in Transform session of config' % key, -1)
 
-if 'Demo' not in Config.sections():
-  raise LookupError('Demo session missing in config')
+try:
+  crop_x=int(Config.get('Transform', 'crop_x'))
+except Exception:
+  fail('Key "crop_x" is used in Transform session of config or not integer', -1)
 
-for key in ['show', 'scale', 'text_x', 'text_y', 'caption']:
-  if key not in Config.options('Demo'):
-    raise LookupError('Key "%s" is missing in Demo session of config' % key)
+try:
+  crop_y=int(Config.get('Transform', 'crop_y'))
+except Exception:
+  fail('Key "crop_x" is used in Transform session of config but not integer', -1)
 
-cam = Config.get('Capture', 'url')
+try:
+  crop_width=int(Config.get('Transform', 'crop_width'))
+except Exception:
+  fail('Key "crop_width" is used in Transform session of config but not integer', -1)
 
-cap = cv2.VideoCapture(cam)
-if not cap:
-  raise ValueError("Failed VideoCapture")
+try:
+  crop_height=int(Config.get('Transform', 'crop_height'))
+except Exception:
+  fail('Key "crop_width" is used in Transform session of config but not integer', -1)
 
-if 'frame_rate' in Config.options('Capture'):
-  frame_rate=int(Config.get('Capture', 'url'))
-  cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
-
-crop_x=int(Config.get('Transform', 'crop_x'))
-crop_y=int(Config.get('Transform', 'crop_y'))
-crop_width=int(Config.get('Transform', 'crop_width'))
-crop_height=int(Config.get('Transform', 'crop_height'))
 crop=((crop_y, crop_x), (crop_height, crop_width))
 
-demo_show=int(Config.get('Demo', 'show'))
-demo_show_timeout=int(Config.get('Demo', 'show_timeout'))
-demo_scale=float(Config.get('Demo', 'scale'))
+if 'Demo' not in Config.sections():
+  fail('Demo session missing in config', -1)
+
+for key in ['show']:
+  if key not in Config.options('Demo'):
+    fail('Key "%s" is missing in Demo session of config' % key, -1)
+
+try:
+  demo_show=int(Config.get('Demo', 'show'))
+except Exception:
+  fail('Key "show" is used in Demo session of config but not integer', -1)
+
+if demo_show:
+  for key in ['scale', 'text_x', 'text_y', 'caption', 'show_timeout']:
+    if key not in Config.options('Demo'):
+      fail('Key "%s" is missing in Demo session of config' % key, -1)
+
+try:
+  demo_show_timeout=int(Config.get('Demo', 'show_timeout'))
+except Exception:
+  fail('Key "show_timeout" is used in Demo session of config but not integer', -1)
+
+try:
+  demo_scale=float(Config.get('Demo', 'scale'))
+except Exception:
+  fail('Key "scale" is used in Demo session of config but not float', -1)
+
 demo_caption=Config.get('Demo', 'caption')
-demo_text_x=int(Config.get('Demo', 'text_x'))
-demo_text_y=int(Config.get('Demo', 'text_y'))
+
+try:
+  demo_text_x=int(Config.get('Demo', 'text_x'))
+except Exception:
+  fail('Key "text_x" is used in Demo session of config but not integer', -1)
+
+try:
+  demo_text_y=int(Config.get('Demo', 'text_y'))
+except Exception:
+  fail('Key "text_y" is used in Demo session of config but not integer', -1)
+
+try:
+  cam = Config.get('Capture', 'url')
+  cap = cv2.VideoCapture(cam)
+  if frame_rate is not None:
+    cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
+except Exception:
+  fail('Failed VideoCapture', -1)
 
 datadir=os.path.dirname(os.path.abspath(__file__))
 datadir=os.path.join(datadir, 'data')
 
-engine=alpr.Engine(datadir, crop, transform=None)
+if not os.path.isdir(datadir):
+  fail("Data dir %s does not exists" % datadir, -1)
+
+for datafile in ['haarcascade_russian_plate_number.xml', 'svm_left_border.xml', 'svm_right_border.xml',
+                 'svm_plate.xml', 'svm_vertical_stage1.xml'] + \
+                ['svm_letter_%s_stage_1.xml' % l for l in ['0O', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+                                                           'A', 'B', 'C', 'E', 'H', 'K', 'M', 'P', 'T', 'X', 'Y',
+                                                            '8dot', 'dotB', 'dotC', 'dotE', 'dotH', 'dotM', 'dotO', 'dotP']]:
+  if not os.path.isfile(os.path.join(datadir, datafile)):
+    fail("Data file %s does not exists" % datafile, -1)
+
+try:
+  engine=alpr.Engine(datadir, crop, transform=None)
+except Exception:
+  fail('Coult not init ALPR engine', -1)
 
 def add_input(input_queue):
   while True:
@@ -78,6 +161,26 @@ input_thread = threading.Thread(target=add_input, args=(input_queue,))
 input_thread.daemon = True
 input_thread.start()
 
+def add_alpr_work(input_queue, output_queue):
+  while True:
+    try:
+      frame=input_queue.get()
+      plates=engine.detect(frame, '')
+      detected=(len(plates)>0)
+
+      if detected:
+        output_queue.put((frame, detected, plates[0]))
+      else:
+        output_queue.put((frame, detected, '?'))
+    except:
+      fail('General ALPR engine failure')
+
+alrp_input_queue = Queue.Queue()
+alrp_output_queue = Queue.Queue()
+alpr_work_thread = threading.Thread(target=add_alpr_work, args=(alrp_input_queue, alrp_output_queue,))
+alpr_work_thread.daemon = True
+alpr_work_thread.start()
+
 waiting=False
 waiting_time=time.time()
 show_frame=None
@@ -87,17 +190,12 @@ print 'ready'
 if demo_show:
   cv2.namedWindow(demo_caption, cv2.cv.CV_WINDOW_AUTOSIZE)
 
-#mutex=Lock()
-
 while True:
   # Capture frame-by-frame
   ret, current_frame = cap.read()
   if type(current_frame) == type(None):
-    raise ValueError("Couldn't read frame!")
-    break
+    fail("Couldn't read frame!", -1)
   frame_time=time.time()
-  detected=False
-  plates=[]
 
   command=None
   if not input_queue.empty():
@@ -108,9 +206,17 @@ while True:
     elif command=='test':
       print 'ok'
     elif command=='get':
-      plates=engine.detect(current_frame, '')
-      detected=(len(plates)>0)
-      print "number="+str(plates[0])
+      alrp_input_queue.put(current_frame)
+
+  detected=False
+  plate=None
+  if not alrp_output_queue.empty():
+    show_frame, detected, plate=alrp_output_queue.get()
+    if detected:
+      waiting=True
+      waiting_time=frame_time
+
+    print "number="+str(plate)
 
   if demo_show:
     if show_frame==None or not waiting or detected:
@@ -125,7 +231,7 @@ while True:
       waiting=True
       waiting_time=frame_time
 
-      text=plates[0]
+      text=plate
       cv2.putText(show_frame, text, (demo_text_x, demo_text_y), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 0, 255), 7, cv2.CV_AA);
 
     # Display the resulting frame
