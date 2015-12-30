@@ -50,6 +50,14 @@ if 'frame_rate' in Config.options('Capture'):
 else:
   frame_rate=None
 
+if 'loop' in Config.options('Capture'):
+  try:
+    capture_loop=int(Config.get('Capture', 'loop'))
+  except Exception:
+    fail('Key "loop" is used in Capture session of config but not integer', -1)
+else:
+  capture_loop=0
+
 if 'retry_timeout' in Config.options('Capture'):
   try:
     retry_timeout=int(Config.get('Capture', 'retry_timeout'))
@@ -129,6 +137,7 @@ except Exception:
 try:
   cam = Config.get('Capture', 'url')
   cap = cv2.VideoCapture(cam)
+  capture_frames=cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
   if frame_rate is not None:
     cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
 except Exception:
@@ -194,7 +203,25 @@ print 'ready'
 if demo_show:
   cv2.namedWindow(demo_caption, cv2.cv.CV_WINDOW_AUTOSIZE)
 
+#arbitrary limit
+is_loop_possible = (capture_loop and (capture_frames>0) and (capture_frames<1e6))
+
+frame_counter=0
 while True:
+  #rewind
+  frame_counter+=1
+  print frame_counter, cv2.cv.CV_CAP_PROP_POS_FRAMES
+  if is_loop_possible and frame_counter>=capture_frames:
+    frame_counter = 0
+    try:
+      cam = Config.get('Capture', 'url')
+      cap = cv2.VideoCapture(cam)
+      capture_frames=cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
+      if frame_rate is not None:
+        cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
+    except Exception:
+      fail('Failed VideoCapture', -1)
+
   # Capture frame-by-frame
   ret, current_frame = cap.read()
   if type(current_frame) == type(None):
