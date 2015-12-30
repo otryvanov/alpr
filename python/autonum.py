@@ -6,7 +6,8 @@ import os
 import alpr
 import ConfigParser
 import sys
-import Queue, threading#, Thread, Lock
+import Queue, threading
+import gc
 
 def fail(message, code=None):
   print 'fail'
@@ -172,6 +173,9 @@ def add_alpr_work(input_queue, output_queue):
         output_queue.put((frame, detected, plates[0]))
       else:
         output_queue.put((frame, detected, '?'))
+
+      #force garbage collection after engine.detect to avoid excessive memory usage
+      gc.collect()
     except:
       fail('General ALPR engine failure')
 
