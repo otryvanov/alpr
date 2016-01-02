@@ -197,6 +197,7 @@ alpr_work_thread.start()
 
 waiting=False
 waiting_time=time.time()
+recognizing=False
 show_frame=None
 
 print 'ready'
@@ -238,12 +239,16 @@ while True:
     elif command=='test':
       print 'ok'
     elif command=='get':
+      recognizing=True
+      show_frame=current_frame
       alrp_input_queue.put(current_frame)
 
   detected=False
   plate=None
   if not alrp_output_queue.empty():
     show_frame, detected, plate=alrp_output_queue.get()
+    recognizing=False
+    detected=True
     if detected:
       waiting=True
       waiting_time=frame_time
@@ -251,7 +256,7 @@ while True:
     print "number="+str(plate)
 
   if demo_show:
-    if show_frame==None or not waiting or detected:
+    if show_frame==None or not (waiting or recognizing):
       show_frame=current_frame
 
     if waiting and frame_time-waiting_time>demo_show_timeout:
@@ -275,7 +280,6 @@ while True:
 
   new_frame_start_time=time.time()
   sleep=new_frame_start_time-frame_start_time
-  print new_frame_start_time, frame_start_time, 1.0/frame_rate, sleep
   if sleep<1.0/frame_rate:
     time.sleep(1.0/frame_rate-sleep)
   frame_start_time=new_frame_start_time
