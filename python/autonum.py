@@ -44,9 +44,9 @@ for key in ['url']:
 
 if 'frame_rate' in Config.options('Capture'):
   try:
-    frame_rate=int(Config.get('Capture', 'frame_rate'))
+    frame_rate=float(Config.get('Capture', 'frame_rate'))
   except Exception:
-    fail('Key "frame_rate" is used in Capture session of config but not integer', -1)
+    fail('Key "frame_rate" is used in Capture session of config but not float', -1)
 else:
   frame_rate=None
 
@@ -140,6 +140,7 @@ try:
   capture_frames=cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
   if frame_rate is not None:
     cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
+  frame_rate=cap.get(cv2.cv.CV_CAP_PROP_FPS)
 except Exception:
   fail('Failed VideoCapture', -1)
 
@@ -206,11 +207,11 @@ if demo_show:
 #arbitrary limit
 is_loop_possible = (capture_loop and (capture_frames>0) and (capture_frames<1e6))
 
+frame_start_time=time.time()
 frame_counter=0
 while True:
   #rewind
   frame_counter+=1
-  print frame_counter, cv2.cv.CV_CAP_PROP_POS_FRAMES
   if is_loop_possible and frame_counter>=capture_frames:
     frame_counter = 0
     try:
@@ -271,6 +272,13 @@ while True:
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
       break
+
+  new_frame_start_time=time.time()
+  sleep=new_frame_start_time-frame_start_time
+  print new_frame_start_time, frame_start_time, 1.0/frame_rate, sleep
+  if sleep<1.0/frame_rate:
+    time.sleep(1.0/frame_rate-sleep)
+  frame_start_time=new_frame_start_time
 
 # release the capture
 cap.release()
