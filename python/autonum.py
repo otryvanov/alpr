@@ -20,11 +20,17 @@ def fail(message, code=None):
     finally:
       sys.exit(code)
 
+if getattr(sys, 'frozen', False):
+  #frozen
+  exec_dir = os.path.dirname(sys.executable)
+else:
+  #unfrozen
+  exec_dir = os.path.dirname(os.path.realpath(__file__))
+
 if len(sys.argv)>1:
   config=sys.argv[1]
 else:
-  config=os.path.dirname(os.path.abspath(__file__))
-  config=os.path.join(config, 'autonum.cfg')
+  config=os.path.join(exec_dir, 'autonum.cfg')
 
 if not os.path.isfile(config):
   fail("Configuration file %s does not exists" % config, -1)
@@ -144,8 +150,7 @@ try:
 except Exception:
   fail('Failed VideoCapture', -1)
 
-datadir=os.path.dirname(os.path.abspath(__file__))
-datadir=os.path.join(datadir, 'data')
+datadir=os.path.join(exec_dir, 'data')
 
 if not os.path.isdir(datadir):
   fail("Data dir %s does not exists" % datadir, -1)
@@ -256,7 +261,7 @@ while True:
     print "number="+str(plate)
 
   if demo_show:
-    if show_frame==None or not (waiting or recognizing):
+    if show_frame is None or not (waiting or recognizing):
       show_frame=current_frame
 
     if waiting and frame_time-waiting_time>demo_show_timeout:
