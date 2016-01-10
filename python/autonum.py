@@ -226,6 +226,7 @@ while True:
       capture_frames=cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
       if frame_rate is not None:
         cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
+      frame_start_time=time.time()
     except Exception:
       fail('Failed VideoCapture', -1)
 
@@ -274,7 +275,13 @@ while True:
       waiting_time=frame_time
 
       text=plate
-      cv2.putText(show_frame, text, (demo_text_x, demo_text_y), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 0, 255), 7, cv2.CV_AA);
+
+      font_face=cv2.FONT_HERSHEY_SIMPLEX
+      font_scale=4
+      font_thickness=7
+
+      size=cv2.getTextSize(text, font_face, font_scale, font_thickness)
+      cv2.putText(show_frame, text, (demo_text_x, demo_text_y+size[0][1]), font_face, font_scale, (0, 0, 255), font_thickness, cv2.CV_AA)
 
     # Display the resulting frame
     frame=cv2.resize(show_frame, (0,0), fx=demo_scale, fy=demo_scale)
@@ -284,10 +291,10 @@ while True:
       break
 
   new_frame_start_time=time.time()
-  sleep=new_frame_start_time-frame_start_time
-  if sleep<1.0/frame_rate:
-    time.sleep(1.0/frame_rate-sleep)
-  frame_start_time=new_frame_start_time
+  sleep=1.0/frame_rate-new_frame_start_time+frame_start_time
+  if sleep>0:
+    time.sleep(sleep)
+  frame_start_time=new_frame_start_time+sleep
 
 # release the capture
 cap.release()
