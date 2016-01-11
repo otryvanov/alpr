@@ -143,6 +143,8 @@ except Exception:
 try:
   cam = Config.get('Capture', 'url')
   cap = cv2.VideoCapture(cam)
+  if not cap.isOpened():
+    fail('Could not open VideoCapture', -1)
   capture_frames=cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
   if frame_rate is not None:
     cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
