@@ -64,7 +64,7 @@ if 'loop' in Config.options('Capture'):
 else:
   capture_loop=0
 
-if 'force_frame_rate' in Config.options('Capture'):
+if frame_rate is not None and 'force_frame_rate' in Config.options('Capture'):
   try:
     force_frame_rate=int(Config.get('Capture', 'force_frame_rate'))
   except Exception:
@@ -148,7 +148,7 @@ try:
   capture_frames=cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
   if frame_rate is not None:
     cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
-  if not force_frame_rate:
+  if frame_rate is None or not force_frame_rate:
     frame_rate=cap.get(cv2.cv.CV_CAP_PROP_FPS)
 except Exception:
   fail('Failed VideoCapture', -1)
