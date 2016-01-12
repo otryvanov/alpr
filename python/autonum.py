@@ -64,13 +64,13 @@ if 'loop' in Config.options('Capture'):
 else:
   capture_loop=0
 
-if 'retry_timeout' in Config.options('Capture'):
+if 'force_frame_rate' in Config.options('Capture'):
   try:
-    retry_timeout=int(Config.get('Capture', 'retry_timeout'))
+    force_frame_rate=int(Config.get('Capture', 'force_frame_rate'))
   except Exception:
-    fail('Key "retry_timeout" is used in Capture session of config but not integer', -1)
+    fail('Key "force_frame_rate" is used in Capture session of config but not integer', -1)
 else:
-  retry_timeout=None
+  force_frame_rate=None
 
 if 'Transform' not in Config.sections():
   fail('Transform session missing in config', -1)
@@ -148,7 +148,8 @@ try:
   capture_frames=cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
   if frame_rate is not None:
     cap.set(cv2.cv.CV_CAP_PROP_FPS, frame_rate)
-  frame_rate=cap.get(cv2.cv.CV_CAP_PROP_FPS)
+  if not force_frame_rate:
+    frame_rate=cap.get(cv2.cv.CV_CAP_PROP_FPS)
 except Exception:
   fail('Failed VideoCapture', -1)
 
