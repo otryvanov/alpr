@@ -42,7 +42,6 @@ except Exception:
 
 line = sys.stdin.readline()
 while line:
-  line = sys.stdin.readline()
   img_name=line.rstrip('\n\r')
   img = cv2.imread(img_name)
 
@@ -61,3 +60,4 @@ while line:
 
   #force garbage collection after engine.detect to avoid excessive memory usage
   gc.collect()
+  line = sys.stdin.readline()
