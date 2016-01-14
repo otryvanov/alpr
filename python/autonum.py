@@ -9,6 +9,9 @@ import sys
 import Queue, threading
 import gc
 
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', 0)
+
 def fail(message, code=None):
   print 'fail'
   print >> sys.stderr, message

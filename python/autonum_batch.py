@@ -6,6 +6,9 @@ import alpr
 import sys
 import gc
 
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', 0)
+
 def fail(message, code=None):
   print 'fail'
   print >> sys.stderr, message
@@ -45,6 +48,10 @@ while line:
   img_name=line.rstrip('\n\r')
   img = cv2.imread(img_name)
 
+  if img is None:
+    fail('Could not read '+img_name)
+    continue
+
   try:
     plates=engine.detect(img, '')
     detected=(len(plates)>0)
@@ -54,7 +61,6 @@ while line:
     else:
       print '?'
     #force garbage collection after engine.detect to avoid excessive memory usage
-    sys.stdout.flush()
   except:
     fail('General ALPR engine failure')
 
