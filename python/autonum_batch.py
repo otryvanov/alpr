@@ -50,19 +50,18 @@ while line:
 
   if img is None:
     fail('Could not read '+img_name)
-    continue
+  else:
+    try:
+      plates=engine.detect(img, '')
+      detected=(len(plates)>0)
 
-  try:
-    plates=engine.detect(img, '')
-    detected=(len(plates)>0)
-
-    if detected:
-      print plates[0]
-    else:
-      print '?'
-    #force garbage collection after engine.detect to avoid excessive memory usage
-  except:
-    fail('General ALPR engine failure')
+      if detected:
+        print plates[0]
+      else:
+        print '?'
+      #force garbage collection after engine.detect to avoid excessive memory usage
+    except:
+      fail('General ALPR engine failure')
 
   #force garbage collection after engine.detect to avoid excessive memory usage
   gc.collect()
