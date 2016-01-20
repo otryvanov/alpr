@@ -191,7 +191,7 @@ def add_alpr_work(input_queue, output_queue):
       detected=(len(plates)>0)
 
       if detected:
-        output_queue.put((frame, detected, plates[0]))
+        output_queue.put((frame, detected, plates[0][0]))
       else:
         output_queue.put((frame, detected, '?'))
 

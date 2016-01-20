@@ -54,6 +54,7 @@ class Engine:
 
     queue=[TaskZoneTransform(img, debug, self.crop, self.transform)]
     plates=[]
+    box=None
     while len(queue)>0:
       task=queue.pop(0)
       #print "Executing "+str(task)
@@ -69,6 +70,7 @@ class Engine:
             debug(result[n].img, 'haar_'+str(n))
 
         queue+=[TaskHorizontalDeskew(r.img, transformed, r.box, debug) for r in result[:1]]
+        box=result[0].box
       elif isinstance(result, TaskResultHorizontalDeskew):
         r=result
         if r.state:
@@ -105,7 +107,7 @@ class Engine:
       elif isinstance(result, TaskResultSVMLetterDetector):
         queue+=[TaskMergePlate([result.localization])]
       elif isinstance(result, TaskResultMergePlate):
-        plates+=[result.plate]
+        plates+=[(result.plate, box)]
 
     #return plates
     #

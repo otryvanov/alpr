@@ -55,11 +55,11 @@ while line:
       plates=engine.detect(img, '')
       detected=(len(plates)>0)
 
+
       if detected:
-        print plates[0]
+        print "%s,%d,%d,%d,%d" % ((plates[0][0],)+plates[0][1])
       else:
         print '?'
-      #force garbage collection after engine.detect to avoid excessive memory usage
     except:
       fail('General ALPR engine failure')
 
