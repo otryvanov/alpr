@@ -107,7 +107,7 @@ class Engine:
       elif isinstance(result, TaskResultSVMLetterDetector):
         queue+=[TaskMergePlate([result.localization])]
       elif isinstance(result, TaskResultMergePlate):
-        plates+=[(result.plate, box)]
+        plates+=[(result.plate, (box[0]+self.crop[0][1], box[1]+self.crop[0][0], box[2], box[3]))]
 
     #return plates
     #
