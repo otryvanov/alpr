@@ -32,6 +32,8 @@ else:
 
 if len(sys.argv)>1:
   config=sys.argv[1]
+  if not os.path.isabs(config) and not os.path.isfile(config):
+    config=os.path.join(exec_dir, config)
 else:
   config=os.path.join(exec_dir, 'autonum.cfg')
 
@@ -175,8 +177,11 @@ except Exception:
   fail('Coult not init ALPR engine', -1)
 
 def add_input(input_queue):
-  while True:
-    input_queue.put(sys.stdin.readline().rstrip('\n\r'))
+  line=sys.stdin.readline()
+  while line:
+    input_queue.put(line.rstrip('\n\r'))
+    line=sys.stdin.readline()
+  input_queue.put('quit')
 
 input_queue = Queue.Queue()
 input_thread = threading.Thread(target=add_input, args=(input_queue,))
@@ -245,6 +250,11 @@ while True:
   command=None
   if not input_queue.empty():
     command=input_queue.get()
+    cmd=command.split(" ", 1)
+    command=cmd[0]
+    params=None
+    if len(cmd)>1:
+      params=cmd[1]
 
     if command=='quit':
       break
@@ -253,7 +263,20 @@ while True:
     elif command=='get':
       recognizing=True
       show_frame=current_frame
+      if params is not None and len(params)>0:
+        try:
+          if not cv2.imwrite(params, current_frame):
+            fail("Could not save frame to file %s" % params)
+        except:
+          fail("Could not save frame to file %s" % params)
       alrp_input_queue.put(current_frame)
+    elif command=='save':
+      if params is not None and len(params)>0:
+        try:
+          if not cv2.imwrite(params, current_frame):
+            fail("Could not save frame to file %s" % params)
+        except:
+          fail("Could not save frame to file %s" % params)
 
   detected=False
   plate=None
